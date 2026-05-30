@@ -4,3 +4,6 @@
 # Go
 coverage.out
 go-coverage.log
+
+# Binary
+helmdownloader
