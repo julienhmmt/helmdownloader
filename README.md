@@ -81,7 +81,7 @@ search_limit: 20
 
 Each bundle is a `.tar.gz` named `<chart>-<version>-bundle.tar.gz` containing:
 
-```
+```text
 <chart>-<version>.tgz     # the Helm chart
 values.yaml               # default chart values
 images/
@@ -94,7 +94,7 @@ The `images.txt` manifest maps original references to their retagged counterpart
 
 ## Architecture
 
-```
+```text
 ┌──────────────┐    ┌───────────────┐    ┌─────────────┐
 │   Search     │───>│   Versions    │───>│   Review    │
 │  (TUI)       │    │   (TUI)       │    │   (TUI)     │
@@ -121,7 +121,7 @@ The `images.txt` manifest maps original references to their retagged counterpart
 ### Packages
 
 | Package | Responsibility |
-|---------|---------------|
+| ------- | -------------- |
 | `internal/config` | YAML config loading with defaults |
 | `internal/artifacthub` | ArtifactHub REST API client |
 | `internal/helm` | Shell-outs to `helm` binary (pull, template, show values) |
@@ -136,6 +136,7 @@ The `images.txt` manifest maps original references to their retagged counterpart
 Helm charts often declare images inside templates using `.Values.image.repository` and `.Values.image.tag`. To discover them, HelmDownloader renders the chart with default values using `helm template`, then recursively scans every YAML document for keys named `image`.
 
 This means:
+
 - ✅ Images in Deployments, StatefulSets, DaemonSets, Jobs, CronJobs, etc. are found
 - ✅ Images in initContainers are found
 - ✅ Sidecar images are found
