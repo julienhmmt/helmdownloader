@@ -38,7 +38,7 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 ### Screens
 
 | Screen | Keys | Description |
-|--------|------|-------------|
+| ------ | ---- | ------------ |
 | **Search** | `Enter` to search, `Esc` to quit | Type a chart name to search ArtifactHub |
 | **Results** | `Enter` to select, `/` to filter, `Esc` to back | Browse matching charts |
 | **Versions** | `Enter` to select, `/` to filter, `Esc` to back | Pick a chart version |
@@ -57,7 +57,7 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 ```
 
 | Flag | Default | Description |
-|------|---------|-------------|
+| ------ | ------- | ----------- |
 | `-config` | `~/.config/helmdownloader/config.yaml` | Path to config file |
 | `-registry-prefix` | (from config) | Private registry prefix for retagging |
 | `-platform` | (from config) | Target platform for images, e.g. `linux/amd64` |
