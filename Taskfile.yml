@@ -1,0 +1,62 @@
+version: "3"
+
+tasks:
+  default:
+    desc: Show available tasks
+    silent: true
+    cmds:
+      - task --list
+
+  build:
+    desc: Build the helmdownloader binary
+    cmds:
+      - go build -o helmdownloader .
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - helmdownloader
+
+  build-release:
+    desc: Build optimized release binary
+    cmds:
+      - go build -ldflags="-s -w" -trimpath -o helmdownloader .
+
+  test:
+    desc: Run all tests
+    cmds:
+      - go test ./... -count=1
+
+  test-race:
+    desc: Run tests with race detector
+    cmds:
+      - go test ./... -race -count=1
+
+  go-lint:
+    desc: Run golangci-lint on the codebase
+    cmds:
+      - golangci-lint run ./...
+
+  go-vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  go-update:
+    desc: Update Go module dependencies
+    cmds:
+      - go get -u ./...
+      - go mod tidy
+      - go mod verify
+
+  go-clean:
+    desc: Remove build artifacts and caches
+    cmds:
+      - rm -f helmdownloader
+      - go clean -cache
+
+  install:
+    desc: Install the binary to $GOPATH/bin
+    cmds:
+      - go install .
