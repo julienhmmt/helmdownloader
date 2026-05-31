@@ -2,6 +2,7 @@ package tui
 
 import (
 	"github.com/julienhmmt/helmdownloader/internal/artifacthub"
+	"github.com/julienhmmt/helmdownloader/internal/bundle"
 	"github.com/julienhmmt/helmdownloader/internal/pipeline"
 )
 
@@ -25,7 +26,14 @@ type progressMsg struct {
 	current int
 	total   int
 	ref     string
-	failed  bool
+	err     error
+}
+
+// downloadDoneMsg carries the result of a download pass: the entries that
+// succeeded and the references that failed.
+type downloadDoneMsg struct {
+	entries  []bundle.ImageEntry
+	failures []pipeline.ImageFailure
 }
 
 // doneMsg signals that the bundle has been written.

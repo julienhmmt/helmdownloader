@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/julienhmmt/helmdownloader/internal/artifacthub"
+	"github.com/julienhmmt/helmdownloader/internal/bundle"
 	"github.com/julienhmmt/helmdownloader/internal/config"
 	"github.com/julienhmmt/helmdownloader/internal/images"
 	"github.com/julienhmmt/helmdownloader/internal/log"
@@ -26,6 +27,8 @@ const (
 	stateReview
 	stateAddImage
 	stateDownloading
+	stateDownloadReview
+	stateBundling
 	stateDone
 	stateError
 )
@@ -54,13 +57,15 @@ type model struct {
 	reviewImages    []images.Image
 	reviewCursor    int
 
-	activity     chan tea.Msg
-	downCurrent  int
-	downTotal    int
-	downRef      string
-	downFailures int
-	bundlePath   string
-	err          error
+	activity    chan tea.Msg
+	downCurrent int
+	downTotal   int
+	downRef     string
+	downErr     error
+	entries     []bundle.ImageEntry
+	failures    []pipeline.ImageFailure
+	bundlePath  string
+	err         error
 }
 
 // New constructs the root model from cfg.

@@ -104,50 +104,55 @@ func (p *Pipeline) Prepare(ctx context.Context, pkg artifacthub.Package, version
 // ProgressFunc reports download progress as each image is processed.
 type ProgressFunc func(current, total int, ref string, err error)
 
-// Build downloads the selected images and writes a single bundle archive,
-// returning its path. Only images with Selected == true are included.
-func (p *Pipeline) Build(ctx context.Context, prepared Prepared, pkg artifacthub.Package, version string, progress ProgressFunc) (string, error) {
-	selected := make([]images.Image, 0, len(prepared.Images))
-	for _, img := range prepared.Images {
-		if img.Selected {
-			selected = append(selected, img)
-		}
-	}
-	p.logger.Infof("building bundle for %s %s with %d images", pkg.Name, version, len(selected))
+// ImageFailure records an image reference that could not be downloaded and the
+// error that prevented it.
+type ImageFailure struct {
+	Ref string
+	Err error
+}
+
+// Download saves the given image references into the work directory, returning
+// the successful bundle entries and any failures. It does not assemble the
+// bundle, so callers can present failures to the user and retry the failed
+// references before committing to a bundle.
+func (p *Pipeline) Download(ctx context.Context, prepared Prepared, refs []string, progress ProgressFunc) ([]bundle.ImageEntry, []ImageFailure, error) {
+	p.logger.Infof("downloading %d images", len(refs))
 	imagesDir := filepath.Join(prepared.WorkDir, "images")
 	if err := os.MkdirAll(imagesDir, 0o755); err != nil {
-		if p.cfg.WorkDir != "" {
-			_ = os.Remove(prepared.ChartPath)
-		}
-		return "", err
+		return nil, nil, fmt.Errorf("create images dir: %w", err)
 	}
-	entries := make([]bundle.ImageEntry, 0, len(selected))
-	failedImages := make([]string, 0)
-	for index, img := range selected {
-		destRef := images.Retag(img.Ref, p.cfg.RegistryPrefix)
-		tarPath := filepath.Join(imagesDir, tarballName(img.Ref))
-		p.logger.Debugf("saving image %d/%d: %s -> %s", index+1, len(selected), img.Ref, destRef)
-		err := p.puller.Save(ctx, img.Ref, destRef, tarPath)
+	entries := make([]bundle.ImageEntry, 0, len(refs))
+	failures := make([]ImageFailure, 0)
+	for index, ref := range refs {
+		destRef := images.Retag(ref, p.cfg.RegistryPrefix)
+		tarPath := filepath.Join(imagesDir, tarballName(ref))
+		p.logger.Debugf("saving image %d/%d: %s -> %s", index+1, len(refs), ref, destRef)
+		err := p.puller.Save(ctx, ref, destRef, tarPath)
 		if progress != nil {
-			progress(index+1, len(selected), img.Ref, err)
+			progress(index+1, len(refs), ref, err)
 		}
 		if err != nil {
-			p.logger.Errorf("failed to save %s: %v", img.Ref, err)
-			failedImages = append(failedImages, img.Ref)
+			p.logger.Errorf("failed to save %s: %v", ref, err)
+			failures = append(failures, ImageFailure{Ref: ref, Err: err})
 			continue
 		}
 		entries = append(entries, bundle.ImageEntry{
 			TarPath:   tarPath,
-			SourceRef: img.Ref,
+			SourceRef: ref,
 			DestRef:   destRef,
 		})
 	}
-	if len(failedImages) > 0 {
-		p.logger.Errorf("failed to download %d images: %v", len(failedImages), failedImages)
-	}
+	return entries, failures, nil
+}
+
+// Bundle assembles the downloaded image entries, the chart, and its values into
+// a single archive and returns its path. It then cleans up intermediate
+// artifacts. At least one entry is required.
+func (p *Pipeline) Bundle(prepared Prepared, pkg artifacthub.Package, version string, entries []bundle.ImageEntry) (string, error) {
 	if len(entries) == 0 {
 		return "", fmt.Errorf("no images were successfully downloaded")
 	}
+	p.logger.Infof("creating bundle for %s %s with %d images", pkg.Name, version, len(entries))
 	bundlePath, err := bundle.Create(bundle.Spec{
 		ChartName:    pkg.Name,
 		ChartVersion: version,
@@ -166,6 +171,7 @@ func (p *Pipeline) Build(ctx context.Context, prepared Prepared, pkg artifacthub
 	// For persistent work dirs, we remove the images subdirectory and the
 	// pulled chart archive, both of which are already embedded in the bundle.
 	if p.cfg.WorkDir != "" {
+		imagesDir := filepath.Join(prepared.WorkDir, "images")
 		if err := os.RemoveAll(imagesDir); err != nil {
 			p.logger.Debugf("failed to clean up images directory: %v", err)
 		}

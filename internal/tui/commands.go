@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/julienhmmt/helmdownloader/internal/artifacthub"
+	"github.com/julienhmmt/helmdownloader/internal/bundle"
 	"github.com/julienhmmt/helmdownloader/internal/pipeline"
 )
 
@@ -42,24 +43,35 @@ func prepareCmd(pl *pipeline.Pipeline, pkg artifacthub.Package, version string) 
 	}
 }
 
-// buildCmd starts the download+bundle in a goroutine, streaming progress over
-// the model's channel. It returns immediately; progress is consumed by
-// waitForActivity.
-func buildCmd(pl *pipeline.Pipeline, prepared pipeline.Prepared, pkg artifacthub.Package, version string, activity chan tea.Msg) tea.Cmd {
+// downloadCmd saves the given image refs in a goroutine, streaming per-image
+// progress over the model's channel. It returns immediately; progress is
+// consumed by waitForActivity, and the pass ends with a downloadDoneMsg.
+func downloadCmd(pl *pipeline.Pipeline, prepared pipeline.Prepared, refs []string, activity chan tea.Msg) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
 		go func() {
-			path, err := pl.Build(ctx, prepared, pkg, version,
+			entries, failures, err := pl.Download(ctx, prepared, refs,
 				func(current, total int, ref string, perr error) {
-					activity <- progressMsg{current: current, total: total, ref: ref, failed: perr != nil}
+					activity <- progressMsg{current: current, total: total, ref: ref, err: perr}
 				})
 			if err != nil {
 				activity <- errMsg{err}
 				return
 			}
-			activity <- doneMsg{bundlePath: path}
+			activity <- downloadDoneMsg{entries: entries, failures: failures}
 		}()
 		return waitForActivity(activity)()
+	}
+}
+
+// bundleCmd assembles the downloaded entries into the final archive.
+func bundleCmd(pl *pipeline.Pipeline, prepared pipeline.Prepared, pkg artifacthub.Package, version string, entries []bundle.ImageEntry) tea.Cmd {
+	return func() tea.Msg {
+		path, err := pl.Bundle(prepared, pkg, version, entries)
+		if err != nil {
+			return errMsg{err}
+		}
+		return doneMsg{bundlePath: path}
 	}
 }
 

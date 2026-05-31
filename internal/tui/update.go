@@ -3,6 +3,7 @@ package tui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/julienhmmt/helmdownloader/internal/images"
+	"github.com/julienhmmt/helmdownloader/internal/pipeline"
 )
 
 // Update is the Bubble Tea message dispatcher.
@@ -32,10 +33,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case progressMsg:
 		m.downCurrent, m.downTotal, m.downRef = typed.current, typed.total, typed.ref
-		if typed.failed {
-			m.downFailures++
-		}
+		m.downErr = typed.err
 		return m, waitForActivity(m.activity)
+	case downloadDoneMsg:
+		m.entries = append(m.entries, typed.entries...)
+		m.failures = typed.failures
+		if len(typed.failures) == 0 {
+			m.state = stateBundling
+			return m, tea.Batch(m.spinner.Tick,
+				bundleCmd(m.pipeline, m.prepared, m.selectedPkg, m.selectedVersion, m.entries))
+		}
+		m.state = stateDownloadReview
+		return m, nil
 	case doneMsg:
 		m.bundlePath = typed.bundlePath
 		m.state = stateDone
@@ -85,6 +94,8 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleReviewKey(msg)
 	case stateAddImage:
 		return m.handleAddImageKey(msg)
+	case stateDownloadReview:
+		return m.handleDownloadReviewKey(msg)
 	case stateDone, stateError:
 		return m.handleEndKey(msg)
 	}
@@ -188,9 +199,34 @@ func (m model) handleReviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.prepared.Images = m.reviewImages
+		refs := selectedRefs(m.reviewImages)
+		m.entries, m.failures, m.downErr = nil, nil, nil
 		m.state = stateDownloading
-		m.downCurrent, m.downTotal, m.downFailures = 0, m.countSelected(), 0
-		return m, tea.Batch(m.spinner.Tick, buildCmd(m.pipeline, m.prepared, m.selectedPkg, m.selectedVersion, m.activity))
+		m.downCurrent, m.downTotal = 0, len(refs)
+		return m, tea.Batch(m.spinner.Tick, downloadCmd(m.pipeline, m.prepared, refs, m.activity))
+	}
+	return m, nil
+}
+
+// handleDownloadReviewKey processes the post-download failures screen, where the
+// user can retry failed images, continue with what downloaded, or abort.
+func (m model) handleDownloadReviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "r":
+		refs := failureRefs(m.failures)
+		m.failures, m.downErr = nil, nil
+		m.state = stateDownloading
+		m.downCurrent, m.downTotal = 0, len(refs)
+		return m, tea.Batch(m.spinner.Tick, downloadCmd(m.pipeline, m.prepared, refs, m.activity))
+	case "c":
+		if len(m.entries) == 0 {
+			return m, nil
+		}
+		m.state = stateBundling
+		return m, tea.Batch(m.spinner.Tick,
+			bundleCmd(m.pipeline, m.prepared, m.selectedPkg, m.selectedVersion, m.entries))
+	case "q", "esc":
+		return m, tea.Batch(cleanupCmd(m.prepared.WorkDir), tea.Quit)
 	}
 	return m, nil
 }
@@ -234,6 +270,26 @@ func (m model) reset() (model, tea.Cmd) {
 	fresh.versions.SetSize(m.width-2, m.height-6)
 	fresh.progress.Width = m.progress.Width
 	return fresh, cleanupCmd(m.prepared.WorkDir)
+}
+
+// selectedRefs returns the references of the images marked for inclusion.
+func selectedRefs(imgs []images.Image) []string {
+	refs := make([]string, 0, len(imgs))
+	for _, img := range imgs {
+		if img.Selected {
+			refs = append(refs, img.Ref)
+		}
+	}
+	return refs
+}
+
+// failureRefs returns the references of the given failures.
+func failureRefs(failures []pipeline.ImageFailure) []string {
+	refs := make([]string, 0, len(failures))
+	for _, f := range failures {
+		refs = append(refs, f.Ref)
+	}
+	return refs
 }
 
 // countSelected returns the number of selected images.

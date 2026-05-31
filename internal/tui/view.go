@@ -22,6 +22,10 @@ func (m model) View() string {
 		return m.viewAddImage()
 	case stateDownloading:
 		return m.viewDownloading()
+	case stateDownloadReview:
+		return m.viewDownloadReview()
+	case stateBundling:
+		return m.viewBundling()
 	case stateDone:
 		return m.viewDone()
 	case stateError:
@@ -111,12 +115,49 @@ func (m model) viewDownloading() string {
 	fmt.Fprintf(&builder, "  %s  %d/%d\n\n", m.progress.ViewAs(percent), m.downCurrent, m.downTotal)
 	fmt.Fprintf(&builder, "  %s %s\n", m.spinner.View(), m.downRef)
 
-	if m.downFailures > 0 {
+	if len(m.failures) > 0 {
 		builder.WriteString(m.styles.errorMsg.Render(
-			fmt.Sprintf("  %d failed\n", m.downFailures)))
+			fmt.Sprintf("  %d failed so far\n", len(m.failures))))
 	}
 	builder.WriteString(m.styles.help.Render("downloading and saving image tarballs, please wait…"))
 	return builder.String()
+}
+
+// viewBundling renders the brief archive-assembly step.
+func (m model) viewBundling() string {
+	return fmt.Sprintf("\n  %s Assembling bundle…\n", m.spinner.View())
+}
+
+// viewDownloadReview lists the images that failed to download and the reasons,
+// letting the user retry, continue, or abort.
+func (m model) viewDownloadReview() string {
+	var builder strings.Builder
+	header := fmt.Sprintf("%d image(s) failed to download", len(m.failures))
+	builder.WriteString(m.styles.errorMsg.Render(header))
+	builder.WriteString("\n\n")
+	for _, f := range m.failures {
+		builder.WriteString(m.styles.selected.Render("  " + f.Ref))
+		builder.WriteString("\n")
+		fmt.Fprintf(&builder, "    %s\n", m.styles.subtle.Render(errLine(f.Err)))
+	}
+	builder.WriteString("\n")
+	fmt.Fprintf(&builder, "  %s\n", m.styles.subtle.Render(
+		fmt.Sprintf("%d downloaded successfully", len(m.entries))))
+	builder.WriteString("\n")
+	footer := "r: retry failed   q: abort"
+	if len(m.entries) > 0 {
+		footer = fmt.Sprintf("r: retry failed   c: continue with %d   q: abort", len(m.entries))
+	}
+	builder.WriteString(m.styles.help.Render(footer))
+	return builder.String()
+}
+
+// errLine renders an error as a single trimmed line for compact display.
+func errLine(err error) string {
+	if err == nil {
+		return ""
+	}
+	return strings.ReplaceAll(err.Error(), "\n", " ")
 }
 
 // viewDone renders the success summary.
@@ -125,9 +166,9 @@ func (m model) viewDone() string {
 	builder.WriteString(m.styles.success.Render("Bundle created"))
 	builder.WriteString("\n\n")
 	fmt.Fprintf(&builder, "  %s\n", m.bundlePath)
-	if m.downFailures > 0 {
+	if len(m.failures) > 0 {
 		builder.WriteString(m.styles.errorMsg.Render(
-			fmt.Sprintf("  %d image(s) failed and were skipped\n", m.downFailures)))
+			fmt.Sprintf("  %d image(s) failed and were skipped\n", len(m.failures))))
 	}
 	builder.WriteString("\n")
 	builder.WriteString(m.styles.help.Render("n: new bundle   q: quit"))
