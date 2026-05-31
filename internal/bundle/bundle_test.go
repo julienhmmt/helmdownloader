@@ -27,7 +27,7 @@ func readArchive(t *testing.T, path string) (map[string]string, map[string]int64
 	t.Helper()
 	f, err := os.Open(path)
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() { assert.NoError(t, f.Close()) }()
 	gz, err := gzip.NewReader(f)
 	require.NoError(t, err)
 	tr := tar.NewReader(gz)
