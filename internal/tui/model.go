@@ -3,6 +3,7 @@ package tui
 
 import (
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -41,6 +42,7 @@ type model struct {
 	width    int
 	height   int
 	spinner  spinner.Model
+	progress progress.Model
 	search   textinput.Model
 	addInput textinput.Model
 	results  list.Model
@@ -65,6 +67,11 @@ type model struct {
 func New(cfg config.Config, logger *log.Logger) model {
 	spin := spinner.New()
 	spin.Spinner = spinner.Dot
+
+	prog := progress.New(
+		progress.WithDefaultGradient(),
+		progress.WithWidth(60),
+	)
 
 	search := textinput.New()
 	search.Placeholder = "search charts (e.g. argo-cd, mattermost)…"
@@ -91,6 +98,7 @@ func New(cfg config.Config, logger *log.Logger) model {
 		logger:   logger,
 		state:    stateSearch,
 		spinner:  spin,
+		progress: prog,
 		search:   search,
 		addInput: add,
 		results:  resultsList,

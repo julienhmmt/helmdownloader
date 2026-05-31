@@ -103,8 +103,14 @@ func (m model) viewDownloading() string {
 	var builder strings.Builder
 	builder.WriteString(m.styles.title.Render("Downloading images"))
 	builder.WriteString("\n\n")
-	fmt.Fprintf(&builder, "  %s %d/%d  %s\n",
-		m.spinner.View(), m.downCurrent, m.downTotal, m.downRef)
+
+	percent := 0.0
+	if m.downTotal > 0 {
+		percent = float64(m.downCurrent) / float64(m.downTotal)
+	}
+	fmt.Fprintf(&builder, "  %s  %d/%d\n\n", m.progress.ViewAs(percent), m.downCurrent, m.downTotal)
+	fmt.Fprintf(&builder, "  %s %s\n", m.spinner.View(), m.downRef)
+
 	if m.downFailures > 0 {
 		builder.WriteString(m.styles.errorMsg.Render(
 			fmt.Sprintf("  %d failed\n", m.downFailures)))

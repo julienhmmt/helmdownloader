@@ -12,6 +12,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = typed.Width, typed.Height
 		m.results.SetSize(typed.Width-2, typed.Height-6)
 		m.versions.SetSize(typed.Width-2, typed.Height-6)
+		m.progress.Width = max(0, min(typed.Width-4, 60))
 		return m, nil
 	case tea.KeyMsg:
 		return m.handleKey(typed)
@@ -183,7 +184,7 @@ func (m model) handleReviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case "enter":
-		if !m.hasSelection() {
+		if m.countSelected() == 0 {
 			return m, nil
 		}
 		m.prepared.Images = m.reviewImages
@@ -231,12 +232,8 @@ func (m model) reset() (model, tea.Cmd) {
 	fresh.width, fresh.height = m.width, m.height
 	fresh.results.SetSize(m.width-2, m.height-6)
 	fresh.versions.SetSize(m.width-2, m.height-6)
+	fresh.progress.Width = m.progress.Width
 	return fresh, cleanupCmd(m.prepared.WorkDir)
-}
-
-// hasSelection reports whether at least one image is selected.
-func (m model) hasSelection() bool {
-	return m.countSelected() > 0
 }
 
 // countSelected returns the number of selected images.
