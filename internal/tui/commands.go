@@ -47,8 +47,9 @@ func prepareCmd(pl *pipeline.Pipeline, pkg artifacthub.Package, version string) 
 // waitForActivity.
 func buildCmd(pl *pipeline.Pipeline, prepared pipeline.Prepared, pkg artifacthub.Package, version string, activity chan tea.Msg) tea.Cmd {
 	return func() tea.Msg {
+		ctx := context.Background()
 		go func() {
-			path, err := pl.Build(prepared, pkg, version,
+			path, err := pl.Build(ctx, prepared, pkg, version,
 				func(current, total int, ref string, perr error) {
 					activity <- progressMsg{current: current, total: total, ref: ref, failed: perr != nil}
 				})

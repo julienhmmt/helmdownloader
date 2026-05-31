@@ -54,6 +54,7 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
   -registry-prefix "my.registry.local" \
   -platform "linux/amd64" \
   -output "./archives" \
+  -work-dir "./workdir" \
   -proxy "http://proxy.domain.local:3128" \
   -v \
   -log-level "debug" \
@@ -65,7 +66,8 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 | `-config` | `~/.config/helmdownloader/config.yaml` | Path to config file |
 | `-registry-prefix` | (from config) | Private registry prefix for retagging |
 | `-platform` | (from config) | Target platform for images, e.g. `linux/amd64` |
-| `-output` | (from config) | Output directory for bundles |
+| `-output` | (from config) | Output directory for bundles (default: archives) |
+| `-work-dir` | (from config) | Work directory for intermediate files (charts, images). If empty, a temporary directory is used |
 | `-proxy` | (from config) | Proxy URL for network requests (e.g. `http://proxy.domain.local:3128`) |
 | `-v` | `false` | Enable verbose logging (shortcut for `--log-level=debug`) |
 | `-log-level` | `info` | Set log level: `silent`, `info`, or `debug` |
@@ -79,6 +81,7 @@ Create `~/.config/helmdownloader/config.yaml`:
 registry_prefix: "rgy01.domain.local"
 platform: "linux/amd64"
 output_dir: "archives"
+work_dir: ""
 https_proxy: "http://proxy.domain.local:3128"
 helm_bin: "helm"
 artifacthub_url: "https://artifacthub.io"

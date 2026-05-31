@@ -4,6 +4,7 @@
 package registry
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -34,18 +35,8 @@ func NewPuller(platform, proxy string, logger *log.Logger) *Puller {
 // Save pulls srcRef for the configured platform and writes it to destPath as a
 // docker-style tarball, embedding destRef as the image's tag so a later
 // "docker load" yields the retagged image ready to push to the airgap registry.
-func (p *Puller) Save(srcRef, destRef, destPath string) error {
+func (p *Puller) Save(ctx context.Context, srcRef, destRef, destPath string) error {
 	p.logger.Infof("pulling image %s for platform %s", srcRef, p.platform)
-
-	// Set proxy environment variables if configured
-	if p.proxy != "" {
-		os.Setenv("HTTP_PROXY", p.proxy)
-		os.Setenv("HTTPS_PROXY", p.proxy)
-		defer func() {
-			os.Unsetenv("HTTP_PROXY")
-			os.Unsetenv("HTTPS_PROXY")
-		}()
-	}
 
 	platform, err := v1.ParsePlatform(p.platform)
 	if err != nil {
@@ -65,18 +56,40 @@ func (p *Puller) Save(srcRef, destRef, destPath string) error {
 		opts = append(opts, crane.WithTransport(transport))
 	}
 
-	img, err := crane.Pull(srcRef, opts...)
+	// Pull the image. The timeout configuration is not used here because
+	// crane.Pull returns a lazy-loading image that retains the context,
+	// which would cause crane.Save to timeout during layer downloads.
+	img, err := crane.Pull(srcRef, append(opts, crane.WithContext(ctx))...)
 	if err != nil {
 		return fmt.Errorf("pull %s: %w", srcRef, err)
 	}
+
 	tag, err := name.NewTag(destRef)
 	if err != nil {
 		return fmt.Errorf("parse dest ref %q: %w", destRef, err)
 	}
+
 	p.logger.Debugf("saving %s to %s", destRef, destPath)
+
+	// Atomic writability check: try to create and immediately remove a temp file
+	testFile := destPath + ".tmp"
+	f, err := os.OpenFile(testFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return fmt.Errorf("cannot create file in destination directory: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(testFile)
+		return fmt.Errorf("cannot close test file: %w", err)
+	}
+	if err := os.Remove(testFile); err != nil {
+		return fmt.Errorf("cannot remove test file: %w", err)
+	}
+
+	// Save performs the heavy layer download and tarball write.
 	if err := crane.Save(img, tag.Name(), destPath); err != nil {
 		return fmt.Errorf("save %s: %w", destRef, err)
 	}
+
 	p.logger.Infof("saved %s", destPath)
 	return nil
 }

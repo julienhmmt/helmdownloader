@@ -54,15 +54,23 @@ func New(cfg config.Config, logger *log.Logger) *Pipeline {
 // Prepare pulls the chart at version, renders it, and extracts its images.
 func (p *Pipeline) Prepare(ctx context.Context, pkg artifacthub.Package, version string) (prep Prepared, err error) {
 	p.logger.Infof("preparing chart %s version %s from %s", pkg.Name, version, pkg.RepoURL)
-	workDir, err := os.MkdirTemp("", "helmdownloader-")
-	if err != nil {
-		return Prepared{}, err
-	}
-	defer func() {
-		if err != nil {
-			_ = os.RemoveAll(workDir)
+	var workDir string
+	if p.cfg.WorkDir != "" {
+		workDir = p.cfg.WorkDir
+		if err := os.MkdirAll(workDir, 0o755); err != nil {
+			return Prepared{}, fmt.Errorf("create work dir: %w", err)
 		}
-	}()
+	} else {
+		workDir, err = os.MkdirTemp("", "helmdownloader-")
+		if err != nil {
+			return Prepared{}, fmt.Errorf("create temp work dir: %w", err)
+		}
+		defer func() {
+			if err != nil {
+				_ = os.RemoveAll(workDir)
+			}
+		}()
+	}
 	p.logger.Debugf("work dir: %s", workDir)
 	pull, err := p.helm.Pull(ctx, pkg.Name, pkg.RepoURL, version, workDir, pkg.IsOCI())
 	if err != nil {
@@ -98,7 +106,7 @@ type ProgressFunc func(current, total int, ref string, err error)
 
 // Build downloads the selected images and writes a single bundle archive,
 // returning its path. Only images with Selected == true are included.
-func (p *Pipeline) Build(prepared Prepared, pkg artifacthub.Package, version string, progress ProgressFunc) (string, error) {
+func (p *Pipeline) Build(ctx context.Context, prepared Prepared, pkg artifacthub.Package, version string, progress ProgressFunc) (string, error) {
 	selected := make([]images.Image, 0, len(prepared.Images))
 	for _, img := range prepared.Images {
 		if img.Selected {
@@ -108,26 +116,37 @@ func (p *Pipeline) Build(prepared Prepared, pkg artifacthub.Package, version str
 	p.logger.Infof("building bundle for %s %s with %d images", pkg.Name, version, len(selected))
 	imagesDir := filepath.Join(prepared.WorkDir, "images")
 	if err := os.MkdirAll(imagesDir, 0o755); err != nil {
+		if p.cfg.WorkDir != "" {
+			_ = os.Remove(prepared.ChartPath)
+		}
 		return "", err
 	}
 	entries := make([]bundle.ImageEntry, 0, len(selected))
+	failedImages := make([]string, 0)
 	for index, img := range selected {
 		destRef := images.Retag(img.Ref, p.cfg.RegistryPrefix)
 		tarPath := filepath.Join(imagesDir, tarballName(img.Ref))
 		p.logger.Debugf("saving image %d/%d: %s -> %s", index+1, len(selected), img.Ref, destRef)
-		err := p.puller.Save(img.Ref, destRef, tarPath)
+		err := p.puller.Save(ctx, img.Ref, destRef, tarPath)
 		if progress != nil {
 			progress(index+1, len(selected), img.Ref, err)
 		}
 		if err != nil {
 			p.logger.Errorf("failed to save %s: %v", img.Ref, err)
-			return "", err
+			failedImages = append(failedImages, img.Ref)
+			continue
 		}
 		entries = append(entries, bundle.ImageEntry{
 			TarPath:   tarPath,
 			SourceRef: img.Ref,
 			DestRef:   destRef,
 		})
+	}
+	if len(failedImages) > 0 {
+		p.logger.Errorf("failed to download %d images: %v", len(failedImages), failedImages)
+	}
+	if len(entries) == 0 {
+		return "", fmt.Errorf("no images were successfully downloaded")
 	}
 	bundlePath, err := bundle.Create(bundle.Spec{
 		ChartName:    pkg.Name,
@@ -141,6 +160,20 @@ func (p *Pipeline) Build(prepared Prepared, pkg artifacthub.Package, version str
 		return "", err
 	}
 	p.logger.Infof("bundle created: %s", bundlePath)
+
+	// Clean up intermediate artifacts from the work directory.
+	// For temp work dirs, the entire dir is cleaned up by the caller.
+	// For persistent work dirs, we remove the images subdirectory and the
+	// pulled chart archive, both of which are already embedded in the bundle.
+	if p.cfg.WorkDir != "" {
+		if err := os.RemoveAll(imagesDir); err != nil {
+			p.logger.Debugf("failed to clean up images directory: %v", err)
+		}
+		if err := os.Remove(prepared.ChartPath); err != nil && !os.IsNotExist(err) {
+			p.logger.Debugf("failed to clean up chart archive %s: %v", prepared.ChartPath, err)
+		}
+	}
+
 	return bundlePath, nil
 }
 

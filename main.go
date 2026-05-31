@@ -15,6 +15,7 @@ import (
 func main() {
 	configPath := flag.String("config", config.DefaultPath(), "path to config file")
 	outputDir := flag.String("output", "", "override output directory for bundles")
+	workDir := flag.String("work-dir", "", "override work directory for intermediate files (charts, images)")
 	prefix := flag.String("registry-prefix", "", "override the private registry prefix")
 	platform := flag.String("platform", "", "override the image platform (e.g. linux/amd64)")
 	proxy := flag.String("proxy", "", "override proxy URL (e.g. http://proxy.domain.local:3128)")
@@ -30,6 +31,9 @@ func main() {
 	}
 	if *outputDir != "" {
 		cfg.OutputDir = *outputDir
+	}
+	if *workDir != "" {
+		cfg.WorkDir = *workDir
 	}
 	if *prefix != "" {
 		cfg.RegistryPrefix = *prefix

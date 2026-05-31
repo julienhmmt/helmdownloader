@@ -17,6 +17,9 @@ type Config struct {
 	Platform string `yaml:"platform"`
 	// OutputDir is where chart bundles are written.
 	OutputDir string `yaml:"output_dir"`
+	// WorkDir is where intermediate files (charts, images) are stored during processing.
+	// If empty, a temporary directory is used.
+	WorkDir string `yaml:"work_dir"`
 	// HTTPSProxy, when set, is exported for helm and registry network calls.
 	HTTPSProxy string `yaml:"https_proxy"`
 	// HelmBin is the helm executable name or path.
@@ -36,14 +39,14 @@ type Config struct {
 // Default returns a Config populated with sensible defaults.
 func Default() Config {
 	return Config{
-		RegistryPrefix: "",
-		Platform:       "linux/amd64",
-		OutputDir:      "archives",
+		ArtifactHubURL: "https://artifacthub.io",
 		HTTPSProxy:     "",
 		HelmBin:        "helm",
-		ArtifactHubURL: "https://artifacthub.io",
-		SearchLimit:    20,
 		LogLevel:       "info",
+		OutputDir:      "archives",
+		Platform:       "linux/amd64",
+		RegistryPrefix: "",
+		SearchLimit:    20,
 	}
 }
 
