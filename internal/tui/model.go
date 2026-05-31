@@ -9,6 +9,7 @@ import (
 	"github.com/julienhmmt/helmdownloader/internal/artifacthub"
 	"github.com/julienhmmt/helmdownloader/internal/config"
 	"github.com/julienhmmt/helmdownloader/internal/images"
+	"github.com/julienhmmt/helmdownloader/internal/log"
 	"github.com/julienhmmt/helmdownloader/internal/pipeline"
 )
 
@@ -34,6 +35,7 @@ type model struct {
 	client   *artifacthub.Client
 	pipeline *pipeline.Pipeline
 	styles   styleSet
+	logger   *log.Logger
 
 	state    state
 	width    int
@@ -60,7 +62,7 @@ type model struct {
 }
 
 // New constructs the root model from cfg.
-func New(cfg config.Config) model {
+func New(cfg config.Config, logger *log.Logger) model {
 	spin := spinner.New()
 	spin.Spinner = spinner.Dot
 
@@ -83,9 +85,10 @@ func New(cfg config.Config) model {
 
 	return model{
 		cfg:      cfg,
-		client:   artifacthub.New(cfg.ArtifactHubURL),
-		pipeline: pipeline.New(cfg),
+		client:   artifacthub.New(cfg.ArtifactHubURL, logger),
+		pipeline: pipeline.New(cfg, logger),
 		styles:   newStyles(),
+		logger:   logger,
 		state:    stateSearch,
 		spinner:  spin,
 		search:   search,

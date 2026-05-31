@@ -11,7 +11,7 @@ import (
 // Config holds all tunable settings for the application.
 type Config struct {
 	// RegistryPrefix is prepended to every image reference when retagging,
-	// e.g. "rgy01.kalos.tdmc". The airgapped registry images will be pushed to.
+	// e.g. "rgy01.domain.tdmc". The airgapped registry images will be pushed to.
 	RegistryPrefix string `yaml:"registry_prefix"`
 	// Platform is the OS/arch the images are pulled for, e.g. "linux/amd64".
 	Platform string `yaml:"platform"`
@@ -25,6 +25,12 @@ type Config struct {
 	ArtifactHubURL string `yaml:"artifacthub_url"`
 	// SearchLimit caps the number of search results requested.
 	SearchLimit int `yaml:"search_limit"`
+	// Verbose enables detailed logging to a file.
+	Verbose bool `yaml:"verbose"`
+	// LogFile is the path where verbose output is written.
+	LogFile string `yaml:"log_file"`
+	// LogLevel controls logging verbosity: silent, info, or debug.
+	LogLevel string `yaml:"log_level"`
 }
 
 // Default returns a Config populated with sensible defaults.
@@ -37,6 +43,7 @@ func Default() Config {
 		HelmBin:        "helm",
 		ArtifactHubURL: "https://artifacthub.io",
 		SearchLimit:    20,
+		LogLevel:       "info",
 	}
 }
 

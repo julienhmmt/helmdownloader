@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/julienhmmt/helmdownloader/internal/log"
 )
 
 const helmKind = "0"
@@ -44,24 +46,28 @@ type Version struct {
 type Client struct {
 	baseURL string
 	http    *http.Client
+	logger  *log.Logger
 }
 
 // New returns a Client targeting baseURL (e.g. "https://artifacthub.io").
-func New(baseURL string) *Client {
+func New(baseURL string, logger *log.Logger) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		http:    &http.Client{Timeout: 30 * time.Second},
+		logger:  logger,
 	}
 }
 
 // Search returns Helm charts matching query, capped at limit results.
 func (c *Client) Search(ctx context.Context, query string, limit int) ([]Package, error) {
+	c.logger.Infof("searching ArtifactHub for %q (limit %d)", query, limit)
 	q := url.Values{}
 	q.Set("kind", helmKind)
 	q.Set("ts_query_web", query)
 	q.Set("limit", fmt.Sprintf("%d", limit))
 	q.Set("facets", "false")
 	endpoint := fmt.Sprintf("%s/api/v1/packages/search?%s", c.baseURL, q.Encode())
+	c.logger.Debugf("GET %s", endpoint)
 	var payload searchResponse
 	if err := c.getJSON(ctx, endpoint, &payload); err != nil {
 		return nil, err
@@ -70,27 +76,26 @@ func (c *Client) Search(ctx context.Context, query string, limit int) ([]Package
 	for _, raw := range payload.Packages {
 		packages = append(packages, raw.toPackage())
 	}
+	c.logger.Infof("found %d packages", len(packages))
 	return packages, nil
 }
 
 // Versions returns every published version of the chart identified by
 // repoName/name, newest first.
 func (c *Client) Versions(ctx context.Context, repoName, name string) ([]Version, error) {
+	c.logger.Infof("fetching versions for %s/%s", repoName, name)
 	endpoint := fmt.Sprintf("%s/api/v1/packages/helm/%s/%s",
 		c.baseURL, url.PathEscape(repoName), url.PathEscape(name))
+	c.logger.Debugf("GET %s", endpoint)
 	var payload detailResponse
 	if err := c.getJSON(ctx, endpoint, &payload); err != nil {
 		return nil, err
 	}
 	versions := make([]Version, 0, len(payload.AvailableVersions))
 	for _, raw := range payload.AvailableVersions {
-		versions = append(versions, Version{
-			Version:    raw.Version,
-			AppVersion: raw.AppVersion,
-			Prerelease: raw.Prerelease,
-			Timestamp:  raw.Timestamp,
-		})
+		versions = append(versions, raw.toVersion())
 	}
+	c.logger.Infof("found %d versions", len(versions))
 	return versions, nil
 }
 
@@ -105,7 +110,9 @@ func (c *Client) getJSON(ctx context.Context, endpoint string, out any) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("artifacthub: unexpected status %d for %s", resp.StatusCode, endpoint)
 	}
@@ -155,4 +162,8 @@ type rawVersion struct {
 	AppVersion string `json:"app_version"`
 	Prerelease bool   `json:"prerelease"`
 	Timestamp  int64  `json:"ts"`
+}
+
+func (r rawVersion) toVersion() Version {
+	return Version(r)
 }

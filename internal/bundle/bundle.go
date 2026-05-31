@@ -45,8 +45,8 @@ type Spec struct {
 //	values.yaml            default chart values
 //	images/<name>.tar      one tarball per image, retagged
 //	images.txt             source -> dest reference manifest
-func Create(spec Spec) (string, error) {
-	if err := os.MkdirAll(spec.OutputDir, 0o755); err != nil {
+func Create(spec Spec) (path string, err error) {
+	if err = os.MkdirAll(spec.OutputDir, 0o755); err != nil {
 		return "", err
 	}
 	outName := fmt.Sprintf("%s-%s-bundle.tar.gz", spec.ChartName, spec.ChartVersion)
@@ -55,29 +55,37 @@ func Create(spec Spec) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer out.Close()
+	defer func() {
+		_ = out.Close()
+		if err != nil {
+			_ = os.Remove(outPath)
+		}
+	}()
 	gzipWriter := gzip.NewWriter(out)
-	defer gzipWriter.Close()
+	defer func() {
+		_ = gzipWriter.Close()
+	}()
 	tarWriter := tar.NewWriter(gzipWriter)
-	defer tarWriter.Close()
-
-	if err := writeFileFromDisk(tarWriter, spec.ChartPath, filepath.Base(spec.ChartPath)); err != nil {
+	defer func() {
+		_ = tarWriter.Close()
+	}()
+	if err = writeFileFromDisk(tarWriter, spec.ChartPath, filepath.Base(spec.ChartPath)); err != nil {
 		return "", err
 	}
 	if spec.Values != "" {
-		if err := writeBytes(tarWriter, "values.yaml", []byte(spec.Values)); err != nil {
+		if err = writeBytes(tarWriter, "values.yaml", []byte(spec.Values)); err != nil {
 			return "", err
 		}
 	}
 	var manifest strings.Builder
 	for _, image := range spec.Images {
 		name := "images/" + filepath.Base(image.TarPath)
-		if err := writeFileFromDisk(tarWriter, image.TarPath, name); err != nil {
+		if err = writeFileFromDisk(tarWriter, image.TarPath, name); err != nil {
 			return "", err
 		}
 		fmt.Fprintf(&manifest, "%s\t%s\t%s\n", image.SourceRef, image.DestRef, name)
 	}
-	if err := writeBytes(tarWriter, "images.txt", []byte(manifest.String())); err != nil {
+	if err = writeBytes(tarWriter, "images.txt", []byte(manifest.String())); err != nil {
 		return "", err
 	}
 	return outPath, nil
@@ -89,7 +97,9 @@ func writeFileFromDisk(tarWriter *tar.Writer, srcPath, name string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 	info, err := file.Stat()
 	if err != nil {
 		return err

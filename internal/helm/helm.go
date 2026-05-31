@@ -10,21 +10,24 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/julienhmmt/helmdownloader/internal/log"
 )
 
 // Client invokes the helm executable.
 type Client struct {
-	bin   string
-	proxy string
+	bin    string
+	proxy  string
+	logger *log.Logger
 }
 
 // New returns a Client using the given helm binary. proxy, when non-empty, is
 // exported as HTTPS_PROXY for every invocation (mirroring the original scripts).
-func New(bin, proxy string) *Client {
+func New(bin, proxy string, logger *log.Logger) *Client {
 	if bin == "" {
 		bin = "helm"
 	}
-	return &Client{bin: bin, proxy: proxy}
+	return &Client{bin: bin, proxy: proxy, logger: logger}
 }
 
 // PullResult describes a chart fetched to disk.
@@ -48,6 +51,7 @@ func (c *Client) Pull(ctx context.Context, name, repoURL, version, destDir strin
 		args = append(args, name, "--repo", repoURL)
 	}
 	args = append(args, "--version", version, "--destination", destDir)
+	c.logger.Debugf("helm pull: %s %s", c.bin, strings.Join(args, " "))
 	if _, err := c.run(ctx, args...); err != nil {
 		return PullResult{}, err
 	}
@@ -61,6 +65,7 @@ func (c *Client) Pull(ctx context.Context, name, repoURL, version, destDir strin
 // Template renders the chart archive at chartPath with default values and
 // returns the concatenated manifest YAML.
 func (c *Client) Template(ctx context.Context, chartPath string) (string, error) {
+	c.logger.Debugf("helm template: %s", chartPath)
 	out, err := c.run(ctx, "template", "release", chartPath)
 	if err != nil {
 		return "", err
@@ -70,6 +75,7 @@ func (c *Client) Template(ctx context.Context, chartPath string) (string, error)
 
 // ShowValues returns the default values.yaml of the chart archive at chartPath.
 func (c *Client) ShowValues(ctx context.Context, chartPath string) (string, error) {
+	c.logger.Debugf("helm show values: %s", chartPath)
 	return c.run(ctx, "show", "values", chartPath)
 }
 

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/julienhmmt/helmdownloader/internal/artifacthub"
@@ -44,20 +45,20 @@ func prepareCmd(pl *pipeline.Pipeline, pkg artifacthub.Package, version string) 
 // buildCmd starts the download+bundle in a goroutine, streaming progress over
 // the model's channel. It returns immediately; progress is consumed by
 // waitForActivity.
-func buildCmd(m *model) tea.Cmd {
+func buildCmd(pl *pipeline.Pipeline, prepared pipeline.Prepared, pkg artifacthub.Package, version string, activity chan tea.Msg) tea.Cmd {
 	return func() tea.Msg {
 		go func() {
-			path, err := m.pipeline.Build(m.prepared, m.selectedPkg, m.selectedVersion,
+			path, err := pl.Build(prepared, pkg, version,
 				func(current, total int, ref string, perr error) {
-					m.activity <- progressMsg{current: current, total: total, ref: ref, failed: perr != nil}
+					activity <- progressMsg{current: current, total: total, ref: ref, failed: perr != nil}
 				})
 			if err != nil {
-				m.activity <- errMsg{err}
+				activity <- errMsg{err}
 				return
 			}
-			m.activity <- doneMsg{bundlePath: path}
+			activity <- doneMsg{bundlePath: path}
 		}()
-		return waitForActivity(m.activity)()
+		return waitForActivity(activity)()
 	}
 }
 
@@ -65,5 +66,15 @@ func buildCmd(m *model) tea.Cmd {
 func waitForActivity(ch chan tea.Msg) tea.Cmd {
 	return func() tea.Msg {
 		return <-ch
+	}
+}
+
+// cleanupCmd removes the given temporary directory in the background.
+func cleanupCmd(dir string) tea.Cmd {
+	return func() tea.Msg {
+		if dir != "" {
+			_ = os.RemoveAll(dir)
+		}
+		return nil
 	}
 }

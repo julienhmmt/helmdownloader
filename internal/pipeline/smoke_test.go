@@ -9,13 +9,14 @@ import (
 	"github.com/julienhmmt/helmdownloader/internal/config"
 	"github.com/julienhmmt/helmdownloader/internal/helm"
 	"github.com/julienhmmt/helmdownloader/internal/images"
+	"github.com/julienhmmt/helmdownloader/internal/log"
 	"github.com/julienhmmt/helmdownloader/internal/pipeline"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSmoke_ArtifactHubSearch(t *testing.T) {
-	client := artifacthub.New("https://artifacthub.io")
+	client := artifacthub.New("https://artifacthub.io", log.Discard())
 	packages, err := client.Search(context.Background(), "argo-cd", 20)
 	require.NoError(t, err)
 	require.NotEmpty(t, packages)
@@ -28,9 +29,11 @@ func TestSmoke_ArtifactHubSearch(t *testing.T) {
 func TestSmoke_HelmPullAndExtract(t *testing.T) {
 	workDir, err := os.MkdirTemp("", "helmdownloader-smoke-")
 	require.NoError(t, err)
-	defer os.RemoveAll(workDir)
+	defer func() {
+		_ = os.RemoveAll(workDir)
+	}()
 
-	client := helm.New("helm", "")
+	client := helm.New("helm", "", log.Discard())
 	// Use latest ingress-nginx chart
 	pull, err := client.Pull(context.Background(), "ingress-nginx",
 		"https://kubernetes.github.io/ingress-nginx",
@@ -51,7 +54,7 @@ func TestSmoke_HelmPullAndExtract(t *testing.T) {
 }
 
 func TestSmoke_PipelinePrepare(t *testing.T) {
-	client := artifacthub.New("https://artifacthub.io")
+	client := artifacthub.New("https://artifacthub.io", log.Discard())
 	packages, err := client.Search(context.Background(), "argo-cd", 20)
 	require.NoError(t, err)
 	require.NotEmpty(t, packages)
@@ -90,7 +93,7 @@ func TestSmoke_PipelinePrepare(t *testing.T) {
 		HelmBin:        "helm",
 	}
 
-	pl := pipeline.New(cfg)
+	pl := pipeline.New(cfg, log.Discard())
 	prepared, err := pl.Prepare(context.Background(), pkg, version)
 	require.NoError(t, err)
 	require.NotEmpty(t, prepared.ChartPath)
@@ -102,6 +105,6 @@ func TestSmoke_PipelinePrepare(t *testing.T) {
 		t.Logf("  %s -> %s", img.Ref, images.Retag(img.Ref, cfg.RegistryPrefix))
 	}
 
-	os.RemoveAll(prepared.WorkDir)
-	os.RemoveAll(cfg.OutputDir)
+	_ = os.RemoveAll(prepared.WorkDir)
+	_ = os.RemoveAll(cfg.OutputDir)
 }

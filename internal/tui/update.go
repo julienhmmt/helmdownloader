@@ -71,7 +71,7 @@ func (m model) updateComponents(msg tea.Msg) (tea.Model, tea.Cmd) {
 // handleKey routes key presses based on the active screen.
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.Type == tea.KeyCtrlC {
-		return m, tea.Quit
+		return m, tea.Batch(cleanupCmd(m.prepared.WorkDir), tea.Quit)
 	}
 	switch m.state {
 	case stateSearch:
@@ -101,7 +101,7 @@ func (m model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.state = stateSearching
 		return m, tea.Batch(m.spinner.Tick, searchCmd(m.client, query, m.cfg.SearchLimit))
 	case tea.KeyEsc:
-		return m, tea.Quit
+		return m, tea.Batch(cleanupCmd(m.prepared.WorkDir), tea.Quit)
 	}
 	return m.updateComponents(msg)
 }
@@ -143,7 +143,11 @@ func (m model) handleVersionsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.selectedVersion = item.version.Version
 		m.state = statePreparing
-		return m, tea.Batch(m.spinner.Tick, prepareCmd(m.pipeline, m.selectedPkg, m.selectedVersion))
+		var cleanup tea.Cmd
+		if m.prepared.WorkDir != "" {
+			cleanup = cleanupCmd(m.prepared.WorkDir)
+		}
+		return m, tea.Batch(m.spinner.Tick, cleanup, prepareCmd(m.pipeline, m.selectedPkg, m.selectedVersion))
 	}
 	return m.updateComponents(msg)
 }
@@ -185,7 +189,7 @@ func (m model) handleReviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.prepared.Images = m.reviewImages
 		m.state = stateDownloading
 		m.downCurrent, m.downTotal, m.downFailures = 0, m.countSelected(), 0
-		return m, tea.Batch(m.spinner.Tick, buildCmd(&m))
+		return m, tea.Batch(m.spinner.Tick, buildCmd(m.pipeline, m.prepared, m.selectedPkg, m.selectedVersion, m.activity))
 	}
 	return m, nil
 }
@@ -213,20 +217,21 @@ func (m model) handleAddImageKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) handleEndKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "esc", "enter":
-		return m, tea.Quit
+		return m, tea.Batch(cleanupCmd(m.prepared.WorkDir), tea.Quit)
 	case "n":
-		return m.reset(), nil
+		fresh, cmd := m.reset()
+		return fresh, cmd
 	}
 	return m, nil
 }
 
 // reset returns the model to a fresh search state for another chart.
-func (m model) reset() model {
-	fresh := New(m.cfg)
+func (m model) reset() (model, tea.Cmd) {
+	fresh := New(m.cfg, m.logger)
 	fresh.width, fresh.height = m.width, m.height
 	fresh.results.SetSize(m.width-2, m.height-6)
 	fresh.versions.SetSize(m.width-2, m.height-6)
-	return fresh
+	return fresh, cleanupCmd(m.prepared.WorkDir)
 }
 
 // hasSelection reports whether at least one image is selected.

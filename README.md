@@ -53,7 +53,10 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 ./helmdownloader \
   -registry-prefix "my.registry.local" \
   -platform "linux/amd64" \
-  -output "./archives"
+  -output "./archives" \
+  -v \
+  -log-level "debug" \
+  -log-file "helmdownloader.log"
 ```
 
 | Flag | Default | Description |
@@ -62,19 +65,25 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 | `-registry-prefix` | (from config) | Private registry prefix for retagging |
 | `-platform` | (from config) | Target platform for images, e.g. `linux/amd64` |
 | `-output` | (from config) | Output directory for bundles |
+| `-v` | `false` | Enable verbose logging (shortcut for `--log-level=debug`) |
+| `-log-level` | `info` | Set log level: `silent`, `info`, or `debug` |
+| `-log-file` | `helmdownloader.log` | Path for log output |
 
 ### Configuration File
 
 Create `~/.config/helmdownloader/config.yaml`:
 
 ```yaml
-registry_prefix: "rgy01.kalos.tdmc"
+registry_prefix: "rgy01.domain.tdmc"
 platform: "linux/amd64"
 output_dir: "archives"
 https_proxy: "http://proxy.land:3128"
 helm_bin: "helm"
 artifacthub_url: "https://artifacthub.io"
 search_limit: 20
+verbose: true
+log_level: "debug"
+log_file: "helmdownloader.log"
 ```
 
 ## Bundle Format

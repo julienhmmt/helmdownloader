@@ -75,8 +75,7 @@ func (m model) viewReview() string {
 		if img.Selected {
 			box = m.styles.checked.Render("[x]")
 		}
-		line := fmt.Sprintf("%s%s %s", cursor, box, img.Ref)
-		builder.WriteString(line + "\n")
+		fmt.Fprintf(&builder, "%s%s %s\n", cursor, box, img.Ref)
 	}
 	builder.WriteString("\n")
 	builder.WriteString(m.styles.subtle.Render(
@@ -104,8 +103,8 @@ func (m model) viewDownloading() string {
 	var builder strings.Builder
 	builder.WriteString(m.styles.title.Render("Downloading images"))
 	builder.WriteString("\n\n")
-	builder.WriteString(fmt.Sprintf("  %s %d/%d  %s\n",
-		m.spinner.View(), m.downCurrent, m.downTotal, m.downRef))
+	fmt.Fprintf(&builder, "  %s %d/%d  %s\n",
+		m.spinner.View(), m.downCurrent, m.downTotal, m.downRef)
 	if m.downFailures > 0 {
 		builder.WriteString(m.styles.errorMsg.Render(
 			fmt.Sprintf("  %d failed\n", m.downFailures)))
@@ -119,7 +118,7 @@ func (m model) viewDone() string {
 	var builder strings.Builder
 	builder.WriteString(m.styles.success.Render("Bundle created"))
 	builder.WriteString("\n\n")
-	builder.WriteString("  " + m.bundlePath + "\n")
+	fmt.Fprintf(&builder, "  %s\n", m.bundlePath)
 	if m.downFailures > 0 {
 		builder.WriteString(m.styles.errorMsg.Render(
 			fmt.Sprintf("  %d image(s) failed and were skipped\n", m.downFailures)))
@@ -135,7 +134,7 @@ func (m model) viewError() string {
 	builder.WriteString(m.styles.errorMsg.Render("Error"))
 	builder.WriteString("\n\n")
 	if m.err != nil {
-		builder.WriteString("  " + m.err.Error() + "\n")
+		fmt.Fprintf(&builder, "  %s\n", m.err.Error())
 	}
 	builder.WriteString("\n")
 	builder.WriteString(m.styles.help.Render("n: new bundle   q: quit"))
