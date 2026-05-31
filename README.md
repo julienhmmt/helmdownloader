@@ -11,6 +11,10 @@ A TUI (Terminal User Interface) application for downloading Helm charts and thei
 - **Download**: Daemonless image pulling using [go-containerregistry](https://github.com/google/go-containerregistry) (no Docker required)
 - **Archive**: Create a single compressed bundle per chart containing the chart, values, and all retagged image tarballs
 
+## Prerequisites
+
+[Helm](https://helm.sh/docs/intro/install/) must be installed and on your `PATH` (or set `helm_bin` in the config). It is used to pull and render charts; image pulling itself is daemonless and needs no Docker. helmdownloader checks for a working helm at startup and exits with a clear message if it is missing.
+
 ## Installation
 
 ```bash

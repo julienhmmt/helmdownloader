@@ -30,6 +30,19 @@ func New(bin, proxy string, logger *log.Logger) *Client {
 	return &Client{bin: bin, proxy: proxy, logger: logger}
 }
 
+// Check verifies the helm binary is present and runnable, returning an
+// actionable error when it is missing or fails to execute. Call it once at
+// startup to fail fast instead of surfacing a cryptic error mid-pipeline.
+func (c *Client) Check(ctx context.Context) error {
+	if _, err := exec.LookPath(c.bin); err != nil {
+		return fmt.Errorf("helm binary %q not found: install Helm (https://helm.sh/docs/intro/install/) or set helm_bin in your config", c.bin)
+	}
+	if _, err := c.run(ctx, "version", "--short"); err != nil {
+		return fmt.Errorf("helm binary %q is present but failed to run: %w", c.bin, err)
+	}
+	return nil
+}
+
 // PullResult describes a chart fetched to disk.
 type PullResult struct {
 	// ChartPath is the path to the downloaded .tgz archive.

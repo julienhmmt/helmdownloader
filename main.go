@@ -3,11 +3,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 
 	"github.com/julienhmmt/helmdownloader/internal/config"
+	"github.com/julienhmmt/helmdownloader/internal/helm"
 	"github.com/julienhmmt/helmdownloader/internal/log"
 	"github.com/julienhmmt/helmdownloader/internal/tui"
 )
@@ -73,6 +75,14 @@ func main() {
 	}
 
 	logger := createLogger(cfg)
+
+	// Preflight: fail fast with a clear message if helm is missing or broken,
+	// rather than surfacing a cryptic error after the user picks a chart.
+	if err := helm.New(cfg.HelmBin, cfg.HTTPSProxy, logger).Check(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
 	if err := tui.Run(cfg, logger); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
