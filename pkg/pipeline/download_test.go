@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/julienhmmt/helmdownloader/internal/artifacthub"
-	"github.com/julienhmmt/helmdownloader/internal/config"
-	"github.com/julienhmmt/helmdownloader/internal/log"
+	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
+	"github.com/julienhmmt/helmdownloader/pkg/config"
+	"github.com/julienhmmt/helmdownloader/pkg/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

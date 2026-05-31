@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/julienhmmt/helmdownloader/internal/log"
+	"github.com/julienhmmt/helmdownloader/pkg/log"
 )
 
 // Client invokes the helm executable.

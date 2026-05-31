@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/julienhmmt/helmdownloader/internal/config"
-	"github.com/julienhmmt/helmdownloader/internal/helm"
-	"github.com/julienhmmt/helmdownloader/internal/log"
 	"github.com/julienhmmt/helmdownloader/internal/tui"
+	"github.com/julienhmmt/helmdownloader/pkg/config"
+	"github.com/julienhmmt/helmdownloader/pkg/helm"
+	"github.com/julienhmmt/helmdownloader/pkg/log"
 )
 
 func main() {

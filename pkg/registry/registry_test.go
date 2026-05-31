@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/julienhmmt/helmdownloader/internal/log"
-	"github.com/julienhmmt/helmdownloader/internal/registry"
+	"github.com/julienhmmt/helmdownloader/pkg/log"
+	"github.com/julienhmmt/helmdownloader/pkg/registry"
 	"github.com/stretchr/testify/assert"
 )
 

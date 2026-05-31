@@ -5,12 +5,12 @@ import (
 	"os"
 	"testing"
 
-	"github.com/julienhmmt/helmdownloader/internal/artifacthub"
-	"github.com/julienhmmt/helmdownloader/internal/config"
-	"github.com/julienhmmt/helmdownloader/internal/helm"
-	"github.com/julienhmmt/helmdownloader/internal/images"
-	"github.com/julienhmmt/helmdownloader/internal/log"
-	"github.com/julienhmmt/helmdownloader/internal/pipeline"
+	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
+	"github.com/julienhmmt/helmdownloader/pkg/config"
+	"github.com/julienhmmt/helmdownloader/pkg/helm"
+	"github.com/julienhmmt/helmdownloader/pkg/images"
+	"github.com/julienhmmt/helmdownloader/pkg/log"
+	"github.com/julienhmmt/helmdownloader/pkg/pipeline"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

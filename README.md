@@ -153,13 +153,13 @@ ENGINE=podman ./load.sh
 
 | Package | Responsibility |
 | ------- | -------------- |
-| `internal/config` | YAML config loading with defaults |
-| `internal/artifacthub` | ArtifactHub REST API client |
-| `internal/helm` | Shell-outs to `helm` binary (pull, template, show values) |
-| `internal/images` | Parse rendered YAML manifests to extract `image:` references; retag with registry prefix |
-| `internal/registry` | Daemonless image pull and save via `go-containerregistry` |
-| `internal/bundle` | Assemble chart + values + image tarballs into a single `.tar.gz` |
-| `internal/pipeline` | Orchestrate the full flow with progress callbacks |
+| `pkg/config` | YAML config loading with defaults |
+| `pkg/artifacthub` | ArtifactHub REST API client |
+| `pkg/helm` | Shell-outs to `helm` binary (pull, template, show values) |
+| `pkg/images` | Parse rendered YAML manifests to extract `image:` references; retag with registry prefix |
+| `pkg/registry` | Daemonless image pull and save via `go-containerregistry` |
+| `pkg/bundle` | Assemble chart + values + image tarballs into a single `.tar.gz` |
+| `pkg/pipeline` | Orchestrate the full flow with progress callbacks |
 | `internal/tui` | Bubble Tea terminal UI with all screens |
 
 ## Image Discovery

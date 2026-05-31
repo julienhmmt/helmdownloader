@@ -13,7 +13,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/julienhmmt/helmdownloader/internal/log"
+	"github.com/julienhmmt/helmdownloader/pkg/log"
 )
 
 // Puller fetches and saves images for a fixed target platform.

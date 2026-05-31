@@ -14,13 +14,13 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/julienhmmt/helmdownloader/internal/artifacthub"
-	"github.com/julienhmmt/helmdownloader/internal/bundle"
-	"github.com/julienhmmt/helmdownloader/internal/config"
-	"github.com/julienhmmt/helmdownloader/internal/helm"
-	"github.com/julienhmmt/helmdownloader/internal/images"
-	"github.com/julienhmmt/helmdownloader/internal/log"
-	"github.com/julienhmmt/helmdownloader/internal/registry"
+	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
+	"github.com/julienhmmt/helmdownloader/pkg/bundle"
+	"github.com/julienhmmt/helmdownloader/pkg/config"
+	"github.com/julienhmmt/helmdownloader/pkg/helm"
+	"github.com/julienhmmt/helmdownloader/pkg/images"
+	"github.com/julienhmmt/helmdownloader/pkg/log"
+	"github.com/julienhmmt/helmdownloader/pkg/registry"
 )
 
 // Prepared holds the result of pulling and rendering a chart, ready for the

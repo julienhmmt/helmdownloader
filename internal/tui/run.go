@@ -2,8 +2,8 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/julienhmmt/helmdownloader/internal/config"
-	"github.com/julienhmmt/helmdownloader/internal/log"
+	"github.com/julienhmmt/helmdownloader/pkg/config"
+	"github.com/julienhmmt/helmdownloader/pkg/log"
 )
 
 // Run starts the TUI program with cfg and blocks until the user quits.

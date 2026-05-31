@@ -7,12 +7,12 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/julienhmmt/helmdownloader/internal/artifacthub"
-	"github.com/julienhmmt/helmdownloader/internal/bundle"
-	"github.com/julienhmmt/helmdownloader/internal/config"
-	"github.com/julienhmmt/helmdownloader/internal/images"
-	"github.com/julienhmmt/helmdownloader/internal/log"
-	"github.com/julienhmmt/helmdownloader/internal/pipeline"
+	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
+	"github.com/julienhmmt/helmdownloader/pkg/bundle"
+	"github.com/julienhmmt/helmdownloader/pkg/config"
+	"github.com/julienhmmt/helmdownloader/pkg/images"
+	"github.com/julienhmmt/helmdownloader/pkg/log"
+	"github.com/julienhmmt/helmdownloader/pkg/pipeline"
 )
 
 // state enumerates the screens of the application.

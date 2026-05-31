@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/julienhmmt/helmdownloader/internal/log"
+	"github.com/julienhmmt/helmdownloader/pkg/log"
 )
 
 const helmKind = "0"

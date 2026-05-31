@@ -1,9 +1,9 @@
 package tui
 
 import (
-	"github.com/julienhmmt/helmdownloader/internal/artifacthub"
-	"github.com/julienhmmt/helmdownloader/internal/bundle"
-	"github.com/julienhmmt/helmdownloader/internal/pipeline"
+	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
+	"github.com/julienhmmt/helmdownloader/pkg/bundle"
+	"github.com/julienhmmt/helmdownloader/pkg/pipeline"
 )
 
 // searchResultMsg carries the packages returned by an ArtifactHub search.

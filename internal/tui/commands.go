@@ -5,9 +5,9 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/julienhmmt/helmdownloader/internal/artifacthub"
-	"github.com/julienhmmt/helmdownloader/internal/bundle"
-	"github.com/julienhmmt/helmdownloader/internal/pipeline"
+	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
+	"github.com/julienhmmt/helmdownloader/pkg/bundle"
+	"github.com/julienhmmt/helmdownloader/pkg/pipeline"
 )
 
 // searchCmd queries ArtifactHub for charts matching query.

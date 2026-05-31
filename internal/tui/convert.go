@@ -2,7 +2,7 @@ package tui
 
 import (
 	"github.com/charmbracelet/bubbles/list"
-	"github.com/julienhmmt/helmdownloader/internal/artifacthub"
+	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
 )
 
 // packagesToItems wraps packages as list items.

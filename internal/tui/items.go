@@ -3,7 +3,7 @@ package tui
 import (
 	"fmt"
 
-	"github.com/julienhmmt/helmdownloader/internal/artifacthub"
+	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
 )
 
 // packageItem adapts an ArtifactHub package to the bubbles list interface.

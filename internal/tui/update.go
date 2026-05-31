@@ -2,8 +2,8 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/julienhmmt/helmdownloader/internal/images"
-	"github.com/julienhmmt/helmdownloader/internal/pipeline"
+	"github.com/julienhmmt/helmdownloader/pkg/images"
+	"github.com/julienhmmt/helmdownloader/pkg/pipeline"
 )
 
 // Update is the Bubble Tea message dispatcher.

@@ -3,7 +3,7 @@ package images_test
 import (
 	"testing"
 
-	"github.com/julienhmmt/helmdownloader/internal/images"
+	"github.com/julienhmmt/helmdownloader/pkg/images"
 	"github.com/stretchr/testify/assert"
 )
 
