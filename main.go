@@ -17,7 +17,7 @@ func main() {
 	outputDir := flag.String("output", "", "override output directory for bundles")
 	prefix := flag.String("registry-prefix", "", "override the private registry prefix")
 	platform := flag.String("platform", "", "override the image platform (e.g. linux/amd64)")
-	proxy := flag.String("proxy", "", "override proxy URL (e.g. http://proxy.land:3128)")
+	proxy := flag.String("proxy", "", "override proxy URL (e.g. http://proxy.domain.local:3128)")
 	verbose := flag.Bool("v", false, "enable verbose logging (shortcut for --log-level=debug)")
 	logLevel := flag.String("log-level", "", "set log level: silent, info, or debug (default: info)")
 	logFile := flag.String("log-file", "helmdownloader.log", "path for log output")
