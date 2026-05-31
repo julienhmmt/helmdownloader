@@ -57,6 +57,76 @@ spec:
 	assert.Equal(t, "nginx:1.27", got[0].Ref)
 }
 
+func TestExtract_SplitRegistryRepositoryTag(t *testing.T) {
+	// Numeric tag (YAML float), registry+repository, and a digest-only entry.
+	values := `
+controller:
+  image:
+    registry: registry.k8s.io
+    repository: ingress-nginx/controller
+    tag: "v1.11.2"
+defaultBackend:
+  image:
+    repository: nginx
+    tag: 1.27
+admissionWebhooks:
+  patch:
+    image:
+      registry: docker.io
+      repository: library/busybox
+      digest: sha256:deadbeef
+`
+	got := images.Extract(values)
+	refs := make([]string, 0, len(got))
+	for _, img := range got {
+		refs = append(refs, img.Ref)
+	}
+	assert.Equal(t, []string{
+		"docker.io/library/busybox@sha256:deadbeef",
+		"nginx:1.27",
+		"registry.k8s.io/ingress-nginx/controller:v1.11.2",
+	}, refs)
+}
+
+func TestExtract_SplitFormIgnoresIncompleteBlocks(t *testing.T) {
+	// No repository -> not an image; pullPolicy-only block is noise.
+	values := `
+image:
+  pullPolicy: IfNotPresent
+  tag: latest
+sidecar:
+  image:
+    repository: ""
+`
+	got := images.Extract(values)
+	assert.Empty(t, got)
+}
+
+func TestExtract_MergesMultipleSources(t *testing.T) {
+	manifests := `
+kind: Pod
+spec:
+  containers:
+    - image: nginx:1.27
+`
+	values := `
+image:
+  repository: nginx
+  tag: "1.27"
+extra:
+  image:
+    repository: redis
+    tag: "7"
+`
+	got := images.Extract(manifests, values)
+	refs := make([]string, 0, len(got))
+	for _, img := range got {
+		refs = append(refs, img.Ref)
+	}
+	// nginx:1.27 appears in both sources but is deduplicated.
+	assert.Equal(t, []string{"nginx:1.27", "redis:7"}, refs)
+}
+
 func TestRetag(t *testing.T) {
 	tests := []struct {
 		name   string

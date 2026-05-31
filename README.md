@@ -6,7 +6,7 @@ A TUI (Terminal User Interface) application for downloading Helm charts and thei
 
 - **Search**: Search for Helm charts on [ArtifactHub](https://artifacthub.io)
 - **Select**: Choose Helm charts and their versions
-- **Auto-discover**: Automatically extract all container image references from a rendered chart
+- **Auto-discover**: Automatically extract all container image references from a rendered chart and its `values.yaml`, including the split `registry`/`repository`/`tag`/`digest` form used by many charts
 - **Review**: Manually add, remove, or toggle individual images before downloading
 - **Download**: Daemonless image pulling using [go-containerregistry](https://github.com/google/go-containerregistry) (no Docker required)
 - **Archive**: Create a single compressed bundle per chart containing the chart, values, and all retagged image tarballs
