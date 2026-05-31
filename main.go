@@ -16,6 +16,7 @@ func main() {
 	configPath := flag.String("config", config.DefaultPath(), "path to config file")
 	outputDir := flag.String("output", "", "override output directory for bundles")
 	workDir := flag.String("work-dir", "", "override work directory for intermediate files (charts, images)")
+	concurrency := flag.Int("concurrency", 0, "override max parallel image downloads (default 4)")
 	prefix := flag.String("registry-prefix", "", "override the private registry prefix")
 	platform := flag.String("platform", "", "override the image platform (e.g. linux/amd64)")
 	proxy := flag.String("proxy", "", "override proxy URL (e.g. http://proxy.domain.local:3128)")
@@ -34,6 +35,9 @@ func main() {
 	}
 	if *workDir != "" {
 		cfg.WorkDir = *workDir
+	}
+	if *concurrency > 0 {
+		cfg.Concurrency = *concurrency
 	}
 	if *prefix != "" {
 		cfg.RegistryPrefix = *prefix

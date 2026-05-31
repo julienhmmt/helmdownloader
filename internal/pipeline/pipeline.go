@@ -9,6 +9,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/julienhmmt/helmdownloader/internal/artifacthub"
 	"github.com/julienhmmt/helmdownloader/internal/bundle"
@@ -32,12 +35,19 @@ type Prepared struct {
 	WorkDir string
 }
 
+// imageSaver pulls a source image and writes it to a tarball retagged as
+// destRef. *registry.Puller is the production implementation; tests substitute
+// a fake.
+type imageSaver interface {
+	Save(ctx context.Context, srcRef, destRef, destPath string) error
+}
+
 // Pipeline runs chart preparation and bundle creation using the configured
 // helm client and image puller.
 type Pipeline struct {
 	cfg    config.Config
 	helm   *helm.Client
-	puller *registry.Puller
+	puller imageSaver
 	logger *log.Logger
 }
 
@@ -112,37 +122,90 @@ type ImageFailure struct {
 }
 
 // Download saves the given image references into the work directory, returning
-// the successful bundle entries and any failures. It does not assemble the
-// bundle, so callers can present failures to the user and retry the failed
-// references before committing to a bundle.
+// the successful bundle entries and any failures. Images are pulled in parallel
+// up to the configured concurrency limit. It does not assemble the bundle, so
+// callers can present failures to the user and retry the failed references
+// before committing to a bundle.
+//
+// The returned entries and failures preserve the order of refs. Progress is
+// reported as each image finishes; current is the number completed so far,
+// which may not match the position of ref in refs because pulls finish out of
+// order.
 func (p *Pipeline) Download(ctx context.Context, prepared Prepared, refs []string, progress ProgressFunc) ([]bundle.ImageEntry, []ImageFailure, error) {
-	p.logger.Infof("downloading %d images", len(refs))
+	limit := p.concurrency()
+	p.logger.Infof("downloading %d images (concurrency %d)", len(refs), limit)
 	imagesDir := filepath.Join(prepared.WorkDir, "images")
 	if err := os.MkdirAll(imagesDir, 0o755); err != nil {
 		return nil, nil, fmt.Errorf("create images dir: %w", err)
 	}
-	entries := make([]bundle.ImageEntry, 0, len(refs))
-	failures := make([]ImageFailure, 0)
+
+	// Each ref writes its outcome to a fixed slot so the final results stay in
+	// input order regardless of completion order.
+	type result struct {
+		entry *bundle.ImageEntry
+		fail  *ImageFailure
+	}
+	results := make([]result, len(refs))
+
+	var (
+		mu        sync.Mutex
+		completed int
+	)
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(limit)
 	for index, ref := range refs {
-		destRef := images.Retag(ref, p.cfg.RegistryPrefix)
-		tarPath := filepath.Join(imagesDir, tarballName(ref))
-		p.logger.Debugf("saving image %d/%d: %s -> %s", index+1, len(refs), ref, destRef)
-		err := p.puller.Save(ctx, ref, destRef, tarPath)
-		if progress != nil {
-			progress(index+1, len(refs), ref, err)
-		}
-		if err != nil {
-			p.logger.Errorf("failed to save %s: %v", ref, err)
-			failures = append(failures, ImageFailure{Ref: ref, Err: err})
-			continue
-		}
-		entries = append(entries, bundle.ImageEntry{
-			TarPath:   tarPath,
-			SourceRef: ref,
-			DestRef:   destRef,
+		group.Go(func() error {
+			destRef := images.Retag(ref, p.cfg.RegistryPrefix)
+			tarPath := filepath.Join(imagesDir, tarballName(ref))
+			p.logger.Debugf("saving image %d/%d: %s -> %s", index+1, len(refs), ref, destRef)
+			err := p.puller.Save(groupCtx, ref, destRef, tarPath)
+
+			mu.Lock()
+			completed++
+			done := completed
+			if err != nil {
+				results[index] = result{fail: &ImageFailure{Ref: ref, Err: err}}
+			} else {
+				results[index] = result{entry: &bundle.ImageEntry{
+					TarPath:   tarPath,
+					SourceRef: ref,
+					DestRef:   destRef,
+				}}
+			}
+			mu.Unlock()
+
+			if err != nil {
+				p.logger.Errorf("failed to save %s: %v", ref, err)
+			}
+			if progress != nil {
+				progress(done, len(refs), ref, err)
+			}
+			// A failed pull is recorded, not propagated: we want every image
+			// attempted so the user sees the full set of failures at once.
+			return nil
 		})
 	}
+	_ = group.Wait()
+
+	entries := make([]bundle.ImageEntry, 0, len(refs))
+	failures := make([]ImageFailure, 0)
+	for _, r := range results {
+		switch {
+		case r.entry != nil:
+			entries = append(entries, *r.entry)
+		case r.fail != nil:
+			failures = append(failures, *r.fail)
+		}
+	}
 	return entries, failures, nil
+}
+
+// concurrency returns the effective parallel download limit, never below 1.
+func (p *Pipeline) concurrency() int {
+	if p.cfg.Concurrency < 1 {
+		return 1
+	}
+	return p.cfg.Concurrency
 }
 
 // Bundle assembles the downloaded image entries, the chart, and its values into

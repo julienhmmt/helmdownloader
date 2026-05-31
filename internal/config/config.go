@@ -20,6 +20,9 @@ type Config struct {
 	// WorkDir is where intermediate files (charts, images) are stored during processing.
 	// If empty, a temporary directory is used.
 	WorkDir string `yaml:"work_dir"`
+	// Concurrency is the maximum number of images downloaded in parallel.
+	// Values below 1 are treated as 1.
+	Concurrency int `yaml:"concurrency"`
 	// HTTPSProxy, when set, is exported for helm and registry network calls.
 	HTTPSProxy string `yaml:"https_proxy"`
 	// HelmBin is the helm executable name or path.
@@ -40,6 +43,7 @@ type Config struct {
 func Default() Config {
 	return Config{
 		ArtifactHubURL: "https://artifacthub.io",
+		Concurrency:    4,
 		HTTPSProxy:     "",
 		HelmBin:        "helm",
 		LogLevel:       "info",
