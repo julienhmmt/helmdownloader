@@ -106,9 +106,18 @@ images/
   <image1>.tar            # retagged image tarball
   <image2>.tar
 images.txt                # manifest: source_ref  dest_ref  tar_name
+load.sh                   # loads and pushes every image to the registry
 ```
 
 The `images.txt` manifest maps original references to their retagged counterparts, making it easy to script the import side on airgapped infrastructure.
+
+On the airgapped side, extract the bundle and run the generated `load.sh` to load every image into your container engine and push it to the target registry:
+
+```bash
+tar xzf argo-cd-1.0.0-bundle.tar.gz
+./load.sh            # uses docker by default
+ENGINE=podman ./load.sh
+```
 
 ## Architecture
 
