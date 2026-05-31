@@ -5,6 +5,9 @@ package registry
 
 import (
 	"fmt"
+	"net/http"
+	"net/url"
+	"os"
 
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -15,16 +18,17 @@ import (
 // Puller fetches and saves images for a fixed target platform.
 type Puller struct {
 	platform string
+	proxy    string
 	logger   *log.Logger
 }
 
 // NewPuller returns a Puller that pulls images for the given platform string,
 // e.g. "linux/amd64".
-func NewPuller(platform string, logger *log.Logger) *Puller {
+func NewPuller(platform, proxy string, logger *log.Logger) *Puller {
 	if platform == "" {
 		platform = "linux/amd64"
 	}
-	return &Puller{platform: platform, logger: logger}
+	return &Puller{platform: platform, proxy: proxy, logger: logger}
 }
 
 // Save pulls srcRef for the configured platform and writes it to destPath as a
@@ -32,11 +36,36 @@ func NewPuller(platform string, logger *log.Logger) *Puller {
 // "docker load" yields the retagged image ready to push to the airgap registry.
 func (p *Puller) Save(srcRef, destRef, destPath string) error {
 	p.logger.Infof("pulling image %s for platform %s", srcRef, p.platform)
+
+	// Set proxy environment variables if configured
+	if p.proxy != "" {
+		os.Setenv("HTTP_PROXY", p.proxy)
+		os.Setenv("HTTPS_PROXY", p.proxy)
+		defer func() {
+			os.Unsetenv("HTTP_PROXY")
+			os.Unsetenv("HTTPS_PROXY")
+		}()
+	}
+
 	platform, err := v1.ParsePlatform(p.platform)
 	if err != nil {
 		return fmt.Errorf("parse platform %q: %w", p.platform, err)
 	}
-	img, err := crane.Pull(srcRef, crane.WithPlatform(platform))
+
+	// Build crane options with proxy support
+	opts := []crane.Option{crane.WithPlatform(platform)}
+	if p.proxy != "" {
+		proxyURL, err := url.Parse(p.proxy)
+		if err != nil {
+			return fmt.Errorf("parse proxy URL %q: %w", p.proxy, err)
+		}
+		transport := &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+		}
+		opts = append(opts, crane.WithTransport(transport))
+	}
+
+	img, err := crane.Pull(srcRef, opts...)
 	if err != nil {
 		return fmt.Errorf("pull %s: %w", srcRef, err)
 	}

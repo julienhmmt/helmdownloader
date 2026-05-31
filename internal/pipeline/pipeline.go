@@ -46,7 +46,7 @@ func New(cfg config.Config, logger *log.Logger) *Pipeline {
 	return &Pipeline{
 		cfg:    cfg,
 		helm:   helm.New(cfg.HelmBin, cfg.HTTPSProxy, logger),
-		puller: registry.NewPuller(cfg.Platform, logger),
+		puller: registry.NewPuller(cfg.Platform, cfg.HTTPSProxy, logger),
 		logger: logger,
 	}
 }

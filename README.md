@@ -54,6 +54,7 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
   -registry-prefix "my.registry.local" \
   -platform "linux/amd64" \
   -output "./archives" \
+  -proxy "http://proxy.land:3128" \
   -v \
   -log-level "debug" \
   -log-file "helmdownloader.log"
@@ -65,6 +66,7 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 | `-registry-prefix` | (from config) | Private registry prefix for retagging |
 | `-platform` | (from config) | Target platform for images, e.g. `linux/amd64` |
 | `-output` | (from config) | Output directory for bundles |
+| `-proxy` | (from config) | Proxy URL for network requests (e.g. `http://proxy.land:3128`) |
 | `-v` | `false` | Enable verbose logging (shortcut for `--log-level=debug`) |
 | `-log-level` | `info` | Set log level: `silent`, `info`, or `debug` |
 | `-log-file` | `helmdownloader.log` | Path for log output |
