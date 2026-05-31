@@ -15,7 +15,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// skipUnlessSmoke skips network/helm-dependent smoke tests in -short mode so
+// the unit suite stays runnable offline. Run them with: go test -run Smoke .
+func skipUnlessSmoke(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("skipping network/helm smoke test in -short mode")
+	}
+}
+
 func TestSmoke_ArtifactHubSearch(t *testing.T) {
+	skipUnlessSmoke(t)
 	client := artifacthub.New("https://artifacthub.io", log.Discard())
 	packages, err := client.Search(context.Background(), "argo-cd", 20)
 	require.NoError(t, err)
@@ -27,6 +37,7 @@ func TestSmoke_ArtifactHubSearch(t *testing.T) {
 }
 
 func TestSmoke_HelmPullAndExtract(t *testing.T) {
+	skipUnlessSmoke(t)
 	workDir, err := os.MkdirTemp("", "helmdownloader-smoke-")
 	require.NoError(t, err)
 	defer func() {
@@ -54,6 +65,7 @@ func TestSmoke_HelmPullAndExtract(t *testing.T) {
 }
 
 func TestSmoke_PipelinePrepare(t *testing.T) {
+	skipUnlessSmoke(t)
 	client := artifacthub.New("https://artifacthub.io", log.Discard())
 	packages, err := client.Search(context.Background(), "argo-cd", 20)
 	require.NoError(t, err)

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/julienhmmt/helmdownloader/internal/artifacthub"
 	"github.com/julienhmmt/helmdownloader/internal/config"
 	"github.com/julienhmmt/helmdownloader/internal/log"
 	"github.com/stretchr/testify/assert"
@@ -182,6 +183,18 @@ func TestRetries_FloorsAtZero(t *testing.T) {
 	assert.Equal(t, 0, pl.retries())
 	pl.cfg.Retries = 4
 	assert.Equal(t, 4, pl.retries())
+}
+
+func TestBundle_RequiresAtLeastOneImage(t *testing.T) {
+	pl := newTestPipeline(&fakeSaver{}, 1)
+	_, err := pl.Bundle(Prepared{}, artifacthub.Package{Name: "c"}, "1.0.0", nil)
+	assert.ErrorContains(t, err, "no images")
+}
+
+func TestTarballName_SanitizesUnsafeChars(t *testing.T) {
+	assert.Equal(t, "quay.io_argoproj_argocd_v3.2.6.tar", tarballName("quay.io/argoproj/argocd:v3.2.6"))
+	assert.Equal(t, "redis_7.tar", tarballName("redis:7"))
+	assert.Equal(t, "ghcr.io_dexidp_dex_sha256_abc.tar", tarballName("ghcr.io/dexidp/dex@sha256:abc"))
 }
 
 func TestConcurrency_FloorsAtOne(t *testing.T) {
