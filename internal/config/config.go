@@ -23,6 +23,10 @@ type Config struct {
 	// Concurrency is the maximum number of images downloaded in parallel.
 	// Values below 1 are treated as 1.
 	Concurrency int `yaml:"concurrency"`
+	// Retries is the number of additional attempts made for a failed image
+	// pull, on top of the initial try, using exponential backoff. Negative
+	// values are treated as 0.
+	Retries int `yaml:"retries"`
 	// HTTPSProxy, when set, is exported for helm and registry network calls.
 	HTTPSProxy string `yaml:"https_proxy"`
 	// HelmBin is the helm executable name or path.
@@ -50,6 +54,7 @@ func Default() Config {
 		OutputDir:      "archives",
 		Platform:       "linux/amd64",
 		RegistryPrefix: "",
+		Retries:        2,
 		SearchLimit:    20,
 	}
 }

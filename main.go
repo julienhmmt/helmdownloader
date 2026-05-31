@@ -17,6 +17,7 @@ func main() {
 	outputDir := flag.String("output", "", "override output directory for bundles")
 	workDir := flag.String("work-dir", "", "override work directory for intermediate files (charts, images)")
 	concurrency := flag.Int("concurrency", 0, "override max parallel image downloads (default 4)")
+	retries := flag.Int("retries", -1, "override retry attempts per failed image pull (default 2)")
 	prefix := flag.String("registry-prefix", "", "override the private registry prefix")
 	platform := flag.String("platform", "", "override the image platform (e.g. linux/amd64)")
 	proxy := flag.String("proxy", "", "override proxy URL (e.g. http://proxy.domain.local:3128)")
@@ -38,6 +39,9 @@ func main() {
 	}
 	if *concurrency > 0 {
 		cfg.Concurrency = *concurrency
+	}
+	if *retries >= 0 {
+		cfg.Retries = *retries
 	}
 	if *prefix != "" {
 		cfg.RegistryPrefix = *prefix

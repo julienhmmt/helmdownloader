@@ -69,6 +69,7 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 | `-output` | (from config) | Output directory for bundles (default: archives) |
 | `-work-dir` | (from config) | Work directory for intermediate files (charts, images). If empty, a temporary directory is used |
 | `-concurrency` | `4` | Maximum number of images downloaded in parallel |
+| `-retries` | `2` | Retry attempts per failed image pull (exponential backoff) |
 | `-proxy` | (from config) | Proxy URL for network requests (e.g. `http://proxy.domain.local:3128`) |
 | `-v` | `false` | Enable verbose logging (shortcut for `--log-level=debug`) |
 | `-log-level` | `info` | Set log level: `silent`, `info`, or `debug` |
@@ -84,6 +85,7 @@ platform: "linux/amd64"
 output_dir: "archives"
 work_dir: ""
 concurrency: 4
+retries: 2
 https_proxy: "http://proxy.domain.local:3128"
 helm_bin: "helm"
 artifacthub_url: "https://artifacthub.io"
