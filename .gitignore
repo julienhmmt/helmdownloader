@@ -1,0 +1,12 @@
+.DS_Store
+.env
+*.log
+.task/checksum
+archives/*
+
+# Go
+coverage.out
+go-coverage.log
+
+# Binary
+helmdownloader
