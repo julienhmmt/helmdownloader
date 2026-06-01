@@ -160,6 +160,7 @@ ENGINE=podman ./load.sh
 | `pkg/registry` | Daemonless image pull and save via `go-containerregistry` |
 | `pkg/bundle` | Assemble chart + values + image tarballs into a single `.tar.gz` |
 | `pkg/pipeline` | Orchestrate the full flow with progress callbacks |
+| `pkg/log` | Leveled logger (silent/info/debug) writing to the log file |
 | `internal/tui` | Bubble Tea terminal UI with all screens |
 
 ## Image Discovery
@@ -177,7 +178,7 @@ You can always manually add missing images using the `a` key on the Review scree
 
 ## Requirements
 
-- [Go](https://go.dev) 1.22+ (to build)
+- [Go](https://go.dev) 1.26+ (to build)
 - [Helm](https://helm.sh) 3.x (runtime dependency, must be in `$PATH`)
 - Network access to ArtifactHub and the chart/image registries
 
