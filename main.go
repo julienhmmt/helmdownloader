@@ -37,6 +37,7 @@ func main() {
 	retries := flag.Int("retries", -1, "override retry attempts per failed image pull (default 2)")
 	prefix := flag.String("registry-prefix", "", "override the private registry prefix")
 	platform := flag.String("platform", "", "override the image platform (e.g. linux/amd64)")
+	resume := flag.Bool("resume", false, "reuse image tarballs already present in a persistent work dir")
 	proxy := flag.String("proxy", "", "override proxy URL (e.g. http://proxy.domain.local:3128)")
 	verbose := flag.Bool("v", false, "enable verbose logging (shortcut for --log-level=debug)")
 	logLevel := flag.String("log-level", "", "set log level: silent, info, or debug (default: info)")
@@ -71,6 +72,9 @@ func main() {
 	}
 	if len(setValues) > 0 {
 		cfg.SetValues = setValues
+	}
+	if *resume {
+		cfg.Resume = true
 	}
 	if *proxy != "" {
 		cfg.HTTPSProxy = *proxy

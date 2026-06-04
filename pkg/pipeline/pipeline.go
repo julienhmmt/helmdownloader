@@ -180,6 +180,27 @@ func (p *Pipeline) Download(ctx context.Context, prepared Prepared, refs []strin
 			srcRef := images.PullRef(ref)
 			destRef := images.Retag(ref, p.cfg.RegistryPrefix)
 			tarPath := filepath.Join(imagesDir, tarballName(ref))
+
+			// Resume: reuse a tarball already on disk from a prior run instead of
+			// pulling it again. The digest sidecar restores the manifest digest so
+			// the bundle stays fully pinned.
+			if p.cfg.Resume {
+				if digest, ok := reusableTarball(tarPath); ok {
+					p.logger.Infof("reusing existing tarball for %s", ref)
+					mu.Lock()
+					completed++
+					done := completed
+					results[index] = result{entry: &bundle.ImageEntry{
+						TarPath: tarPath, SourceRef: ref, DestRef: destRef, Digest: digest,
+					}}
+					mu.Unlock()
+					if progress != nil {
+						progress(done, len(refs), ref, nil)
+					}
+					return nil
+				}
+			}
+
 			p.logger.Debugf("saving image %d/%d: %s -> %s", index+1, len(refs), srcRef, destRef)
 			digest, err := p.saveWithRetry(groupCtx, srcRef, destRef, tarPath)
 
@@ -195,6 +216,9 @@ func (p *Pipeline) Download(ctx context.Context, prepared Prepared, refs []strin
 					DestRef:   destRef,
 					Digest:    digest,
 				}}
+				// Record the digest beside the tarball so a later --resume run can
+				// reuse it without re-pulling and still pin the bundle.
+				writeDigestSidecar(tarPath, digest)
 			}
 			mu.Unlock()
 
@@ -308,6 +332,34 @@ func (p *Pipeline) Bundle(prepared Prepared, pkg artifacthub.Package, version st
 	}
 
 	return bundlePath, nil
+}
+
+// digestSidecarPath returns the path of the file recording a tarball's digest.
+func digestSidecarPath(tarPath string) string {
+	return tarPath + ".digest"
+}
+
+// writeDigestSidecar records digest beside the tarball for later --resume runs.
+// Failure is non-fatal: the tarball is still valid, resume just won't repin it.
+func writeDigestSidecar(tarPath, digest string) {
+	if digest == "" {
+		return
+	}
+	_ = os.WriteFile(digestSidecarPath(tarPath), []byte(digest), 0o644)
+}
+
+// reusableTarball reports whether a non-empty tarball already exists at tarPath,
+// returning the recorded digest (empty when no sidecar is present).
+func reusableTarball(tarPath string) (string, bool) {
+	info, err := os.Stat(tarPath)
+	if err != nil || info.IsDir() || info.Size() == 0 {
+		return "", false
+	}
+	data, err := os.ReadFile(digestSidecarPath(tarPath))
+	if err != nil {
+		return "", true
+	}
+	return strings.TrimSpace(string(data)), true
 }
 
 var unsafeChars = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)

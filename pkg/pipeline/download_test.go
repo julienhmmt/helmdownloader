@@ -3,6 +3,8 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -137,6 +139,31 @@ func TestDownload_ReportsProgressOncePerImage(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int32(len(refs)), calls)
 	assert.Equal(t, int32(len(refs)), maxCurrent)
+}
+
+func TestDownload_ResumeReusesExistingTarball(t *testing.T) {
+	refs := []string{"repo/cached:1", "repo/fresh:2"}
+	saver := &fakeSaver{}
+	pl := newTestPipeline(saver, 2)
+	pl.cfg.Resume = true
+	workDir := t.TempDir()
+
+	// Pre-seed a tarball + digest sidecar for the first ref, as a prior run would.
+	imagesDir := filepath.Join(workDir, "images")
+	require.NoError(t, os.MkdirAll(imagesDir, 0o755))
+	cachedTar := filepath.Join(imagesDir, tarballName("repo/cached:1"))
+	require.NoError(t, os.WriteFile(cachedTar, []byte("cached"), 0o644))
+	require.NoError(t, os.WriteFile(cachedTar+".digest", []byte("sha256:cached"), 0o644))
+
+	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: workDir}, refs, nil)
+	require.NoError(t, err)
+	assert.Empty(t, failures)
+	require.Len(t, entries, 2)
+	// The cached ref is reused (no Save call) and keeps its recorded digest.
+	assert.Equal(t, 0, saver.attemptCount("docker.io/repo/cached:1"))
+	assert.Equal(t, "sha256:cached", entries[0].Digest)
+	// The fresh ref is pulled normally.
+	assert.Equal(t, 1, saver.attemptCount("docker.io/repo/fresh:2"))
 }
 
 func TestDownload_RetriesTransientFailures(t *testing.T) {

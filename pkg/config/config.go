@@ -41,6 +41,10 @@ type Config struct {
 	// SetValues are "key=value" overrides applied when rendering for image
 	// discovery (helm --set), complementing ValuesFiles.
 	SetValues []string `yaml:"set_values"`
+	// Resume, when true, reuses image tarballs already present in a persistent
+	// work directory instead of pulling them again. Only meaningful with a
+	// fixed work_dir; a temporary work dir is empty on each run.
+	Resume bool `yaml:"resume"`
 	// Verbose enables detailed logging to a file.
 	Verbose bool `yaml:"verbose"`
 	// LogFile is the path where verbose output is written.
