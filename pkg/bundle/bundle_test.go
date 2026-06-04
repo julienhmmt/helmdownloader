@@ -3,8 +3,11 @@ package bundle
 import (
 	"archive/tar"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -83,6 +86,23 @@ func TestCreate_WritesAllEntries(t *testing.T) {
 	assert.Contains(t, manifest, "images/img2.tar\t-")
 	// A known digest is emitted as a comment above its load_and_push line.
 	assert.Contains(t, contents["load.sh"], "# sha256:aaa")
+
+	// sha256sums.txt covers chart, values, and image tars in sha256sum -c format.
+	sums := contents["sha256sums.txt"]
+	require.Contains(t, contents, "sha256sums.txt")
+	assert.Contains(t, sums, "  argo-cd-1.0.0.tgz")
+	assert.Contains(t, sums, "  values.yaml")
+	assert.Contains(t, sums, "  images/img1.tar")
+	assert.Contains(t, sums, "  images.txt")
+	// Checksums must match the actual bundled bytes.
+	for line := range strings.SplitSeq(strings.TrimSpace(sums), "\n") {
+		parts := strings.SplitN(line, "  ", 2)
+		require.Len(t, parts, 2, "malformed sum line %q", line)
+		sum := sha256.Sum256([]byte(contents[parts[1]]))
+		assert.Equal(t, hex.EncodeToString(sum[:]), parts[0], "checksum mismatch for %s", parts[1])
+	}
+	// load.sh verifies before pushing.
+	assert.Contains(t, contents["load.sh"], "sha256sums.txt")
 }
 
 func TestCreate_LoadScriptListsImages(t *testing.T) {
@@ -116,6 +136,19 @@ func TestBuildLoadScript_QuotesAndCountsImages(t *testing.T) {
 	assert.Contains(t, script, `"$ENGINE" load -i "$DIR/$1"`)
 	assert.Contains(t, script, `"$ENGINE" push "$2"`)
 	assert.Contains(t, script, "2 image(s)")
+}
+
+func TestBuildLoadScript_IsValidShell(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	script := buildLoadScript([]ImageEntry{
+		{TarPath: "/work/images/a.tar", DestRef: "rgy.local/a:1", Digest: "sha256:abc"},
+		{TarPath: "/work/images/b.tar", DestRef: "rgy.local/b:2"},
+	})
+	path := writeTemp(t, t.TempDir(), "load.sh", script)
+	out, err := exec.Command("sh", "-n", path).CombinedOutput()
+	require.NoError(t, err, "sh -n failed: %s", out)
 }
 
 func TestShellQuote_EscapesSingleQuotes(t *testing.T) {

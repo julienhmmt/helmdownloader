@@ -5,6 +5,8 @@ package bundle
 import (
 	"archive/tar"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -48,6 +50,7 @@ type Spec struct {
 //	values.yaml            default chart values
 //	images/<name>.tar      one tarball per image, retagged
 //	images.txt             source -> dest reference manifest
+//	sha256sums.txt         sha256 of every bundled file (sha256sum -c format)
 //	load.sh                script to load and push every image
 func Create(spec Spec) (path string, err error) {
 	if err = os.MkdirAll(spec.OutputDir, 0o755); err != nil {
@@ -73,33 +76,59 @@ func Create(spec Spec) (path string, err error) {
 	defer func() {
 		_ = tarWriter.Close()
 	}()
-	if err = writeFileFromDisk(tarWriter, spec.ChartPath, filepath.Base(spec.ChartPath)); err != nil {
+	// checksums accumulates "<sha256>  <name>" lines (sha256sum -c format) for
+	// every bundled file except load.sh and sha256sums.txt themselves.
+	var checksums sums
+	chartName := filepath.Base(spec.ChartPath)
+	sum, err := writeFileFromDisk(tarWriter, spec.ChartPath, chartName)
+	if err != nil {
 		return "", err
 	}
+	checksums.add(sum, chartName)
 	if spec.Values != "" {
-		if err = writeBytes(tarWriter, "values.yaml", []byte(spec.Values)); err != nil {
+		if sum, err = writeBytes(tarWriter, "values.yaml", []byte(spec.Values)); err != nil {
 			return "", err
 		}
+		checksums.add(sum, "values.yaml")
 	}
 	var manifest strings.Builder
 	for _, image := range spec.Images {
 		name := "images/" + filepath.Base(image.TarPath)
-		if err = writeFileFromDisk(tarWriter, image.TarPath, name); err != nil {
+		if sum, err = writeFileFromDisk(tarWriter, image.TarPath, name); err != nil {
 			return "", err
 		}
+		checksums.add(sum, name)
 		digest := image.Digest
 		if digest == "" {
 			digest = "-"
 		}
 		fmt.Fprintf(&manifest, "%s\t%s\t%s\t%s\n", image.SourceRef, image.DestRef, name, digest)
 	}
-	if err = writeBytes(tarWriter, "images.txt", []byte(manifest.String())); err != nil {
+	if sum, err = writeBytes(tarWriter, "images.txt", []byte(manifest.String())); err != nil {
 		return "", err
 	}
-	if err = writeBytesMode(tarWriter, "load.sh", []byte(buildLoadScript(spec.Images)), 0o755); err != nil {
+	checksums.add(sum, "images.txt")
+	if _, err = writeBytes(tarWriter, "sha256sums.txt", []byte(checksums.String())); err != nil {
+		return "", err
+	}
+	if _, err = writeBytesMode(tarWriter, "load.sh", []byte(buildLoadScript(spec.Images)), 0o755); err != nil {
 		return "", err
 	}
 	return outPath, nil
+}
+
+// sums accumulates checksum lines in the "sha256sum -c" format:
+// "<hex>  <relative-name>" (two spaces).
+type sums struct {
+	b strings.Builder
+}
+
+func (s *sums) add(hexSum, name string) {
+	fmt.Fprintf(&s.b, "%s  %s\n", hexSum, name)
+}
+
+func (s *sums) String() string {
+	return s.b.String()
 }
 
 // buildLoadScript returns a POSIX shell script that loads each bundled image
@@ -115,6 +144,19 @@ func buildLoadScript(images []ImageEntry) string {
 	b.WriteString("set -eu\n\n")
 	b.WriteString(`ENGINE="${ENGINE:-docker}"` + "\n")
 	b.WriteString(`DIR="$(cd "$(dirname "$0")" && pwd)"` + "\n\n")
+	// Verify file integrity before touching the registry. Skip cleanly when no
+	// checksum tool is available rather than failing the whole load.
+	b.WriteString("if [ -f \"$DIR/sha256sums.txt\" ]; then\n")
+	b.WriteString("  if command -v sha256sum >/dev/null 2>&1; then\n")
+	b.WriteString(`    echo ">> verifying checksums"` + "\n")
+	b.WriteString(`    (cd "$DIR" && sha256sum -c sha256sums.txt)` + "\n")
+	b.WriteString("  elif command -v shasum >/dev/null 2>&1; then\n")
+	b.WriteString(`    echo ">> verifying checksums"` + "\n")
+	b.WriteString(`    (cd "$DIR" && shasum -a 256 -c sha256sums.txt)` + "\n")
+	b.WriteString("  else\n")
+	b.WriteString(`    echo ">> no sha256sum/shasum found, skipping checksum verification" >&2` + "\n")
+	b.WriteString("  fi\n")
+	b.WriteString("fi\n\n")
 	b.WriteString("load_and_push() {\n")
 	b.WriteString(`  echo ">> loading $1"` + "\n")
 	b.WriteString(`  "$ENGINE" load -i "$DIR/$1"` + "\n")
@@ -138,18 +180,19 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// writeFileFromDisk copies the file at srcPath into the archive under name.
-func writeFileFromDisk(tarWriter *tar.Writer, srcPath, name string) error {
+// writeFileFromDisk copies the file at srcPath into the archive under name and
+// returns the hex-encoded sha256 of its contents.
+func writeFileFromDisk(tarWriter *tar.Writer, srcPath, name string) (string, error) {
 	file, err := os.Open(srcPath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer func() {
 		_ = file.Close()
 	}()
 	info, err := file.Stat()
 	if err != nil {
-		return err
+		return "", err
 	}
 	header := &tar.Header{
 		Name:    name,
@@ -158,29 +201,35 @@ func writeFileFromDisk(tarWriter *tar.Writer, srcPath, name string) error {
 		ModTime: info.ModTime(),
 	}
 	if err := tarWriter.WriteHeader(header); err != nil {
-		return err
+		return "", err
 	}
-	_, err = io.Copy(tarWriter, file)
-	return err
+	hasher := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(tarWriter, hasher), file); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
 // writeBytes writes an in-memory file into the archive under name with the
-// default 0o644 mode.
-func writeBytes(tarWriter *tar.Writer, name string, data []byte) error {
+// default 0o644 mode, returning the hex-encoded sha256 of data.
+func writeBytes(tarWriter *tar.Writer, name string, data []byte) (string, error) {
 	return writeBytesMode(tarWriter, name, data, 0o644)
 }
 
 // writeBytesMode writes an in-memory file into the archive under name with the
-// given file mode.
-func writeBytesMode(tarWriter *tar.Writer, name string, data []byte, mode int64) error {
+// given file mode, returning the hex-encoded sha256 of data.
+func writeBytesMode(tarWriter *tar.Writer, name string, data []byte, mode int64) (string, error) {
 	header := &tar.Header{
 		Name: name,
 		Mode: mode,
 		Size: int64(len(data)),
 	}
 	if err := tarWriter.WriteHeader(header); err != nil {
-		return err
+		return "", err
 	}
-	_, err := tarWriter.Write(data)
-	return err
+	if _, err := tarWriter.Write(data); err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
 }

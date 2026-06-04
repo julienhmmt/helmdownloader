@@ -110,7 +110,8 @@ images/
   <image1>.tar            # retagged image tarball
   <image2>.tar
 images.txt                # manifest: source_ref  dest_ref  tar_name  digest
-load.sh                   # loads and pushes every image to the registry
+sha256sums.txt            # sha256 of every bundled file (sha256sum -c format)
+load.sh                   # verifies checksums, then loads and pushes every image
 ```
 
 The `images.txt` manifest maps original references to their retagged counterparts and records the resolved manifest digest (`sha256:...`, or `-` when the registry reported none) of exactly what was bundled, making it easy to script and verify the import side on airgapped infrastructure.
