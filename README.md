@@ -125,9 +125,12 @@ On the airgapped side, extract the bundle and run the generated `load.sh` to loa
 
 ```bash
 tar xzf argo-cd-1.0.0-bundle.tar.gz
-./load.sh            # uses docker by default
-ENGINE=podman ./load.sh
+./load.sh                  # verifies checksums, then loads + pushes (docker by default)
+ENGINE=podman ./load.sh    # use podman instead
+DRY_RUN=1 ./load.sh        # print load/push commands without running them
 ```
+
+`load.sh` verifies `sha256sums.txt` before touching the registry, skips loading any image already present locally (idempotent re-runs), and honors `DRY_RUN=1` for a no-op preview.
 
 ## Architecture
 

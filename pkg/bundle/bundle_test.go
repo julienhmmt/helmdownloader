@@ -185,6 +185,11 @@ func TestBuildLoadScript_QuotesAndCountsImages(t *testing.T) {
 	assert.Contains(t, script, `"$ENGINE" load -i "$DIR/$1"`)
 	assert.Contains(t, script, `"$ENGINE" push "$2"`)
 	assert.Contains(t, script, "2 image(s)")
+	// DRY_RUN preview support and idempotent skip-if-present.
+	assert.Contains(t, script, `DRY_RUN="${DRY_RUN:-}"`)
+	assert.Contains(t, script, `echo "DRY_RUN: $*"`)
+	assert.Contains(t, script, `"$ENGINE" image inspect "$2"`)
+	assert.Contains(t, script, "already present, skipping load")
 }
 
 func TestBuildLoadScript_IsValidShell(t *testing.T) {
