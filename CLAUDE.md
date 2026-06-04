@@ -42,25 +42,36 @@ orchestrates everything else.
 | `pkg/artifacthub` | ArtifactHub REST client (search, versions) |
 | `pkg/helm` | Shells out to `helm` (pull, template, show values); proxy via `HTTPS_PROXY` env |
 | `pkg/images` | Extract `image:` refs from rendered manifests + values.yaml; retag with registry prefix |
-| `pkg/registry` | Daemonless pull + save to docker tarball via go-containerregistry crane |
-| `pkg/bundle` | Assemble chart + values + image tars + `images.txt` + `load.sh` into `.tar.gz` |
+| `pkg/registry` | Daemonless pull + save to docker tarball via go-containerregistry `tarball.Write`; resolves the manifest digest and streams byte progress through a counting writer |
+| `pkg/bundle` | Assemble chart + values + image tars + `images.txt` + `manifest.json` + `sha256sums.txt` + `load.sh` into `.tar.gz` or `.tar.zst` (codec in `compress.go`) |
 | `pkg/pipeline` | Orchestrate Prepare → Download → Bundle with progress callbacks + retry |
 | `pkg/log` | Leveled logger (silent/info/debug) to a file |
 | `internal/tui` | Bubble Tea screens (model/update/view split) |
 
 ## Key Design Decisions
 
-- **Daemonless**: images pulled via `crane`, not Docker. Helm is the only
-  external binary, checked at startup.
+- **Daemonless**: images pulled via go-containerregistry, not Docker. Helm is
+  the only external binary, checked at startup.
 - **Image discovery is best-effort**: charts render with default values, so
-  images behind disabled conditionals are missed. Users add them manually on
-  the Review screen (`a` key). Values.yaml is scanned alongside manifests to
-  catch the split `registry`/`repository`/`tag`/`digest` form.
+  images behind disabled conditionals are missed. Mitigations, in order: the
+  rendered manifests, the top-level values.yaml, and every subchart
+  `charts/*/values.yaml` (`helm.SubchartValues`) are all scanned for the split
+  `registry`/`repository`/`tag`/`digest` form; `-values`/`-set` widen the render;
+  the user adds the rest manually on the Review screen (`a` key).
+- **Digests are pinned**: `registry.Save` returns the resolved manifest digest,
+  which flows into `images.txt`, `manifest.json`, and a `.digest` sidecar (used
+  by `-resume`). The retagged tarball is still tag-referenced (a tarball cannot
+  be digest-tagged); the digest is recorded for verification, not loading.
+- **Bundle integrity**: every bundled file is sha256'd into `sha256sums.txt`;
+  the generated `load.sh` verifies it (sha256sum/shasum) before pushing, is
+  idempotent (skips images already present), and honors `DRY_RUN=1`.
 - **Failures don't abort the batch**: `pipeline.Download` attempts every image
   and returns `[]ImageFailure`, so the user sees the full failure set at once.
 - **Retry with exponential backoff**: `saveWithRetry`, cancellable via context.
 - **Results stay in input order** despite parallel completion (fixed-slot
   results array, not append-on-finish).
+- **Preflight before the long path**: helm presence, compression codec, and
+  free disk space (`-min-free-mb`) all fail fast before any download.
 
 ## Conventions
 
@@ -73,7 +84,11 @@ orchestrates everything else.
   the pattern to follow).
 - Config has one source of truth: add a field to `config.Config`, a default in
   `config.Default`, a CLI flag override in `main.go`, and document it in
-  README.
+  README. Repeatable flags use the `stringSlice` `flag.Value` in `main.go`.
+- Platform-specific code is build-tagged (`diskspace_unix.go` /
+  `diskspace_other.go`); keep a no-op fallback so non-unix builds compile.
+- Tests substitute fakes for `imageSaver` (now `Save(..., onBytes)`) and helm —
+  preserve those seams. Smoke tests need network/helm; they skip under `-short`.
 
 ## License
 

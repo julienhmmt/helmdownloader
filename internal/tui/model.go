@@ -65,10 +65,10 @@ type model struct {
 	downBytesRef string
 	downWritten  int64
 	downSize     int64
-	entries     []bundle.ImageEntry
-	failures    []pipeline.ImageFailure
-	bundlePath  string
-	err         error
+	entries      []bundle.ImageEntry
+	failures     []pipeline.ImageFailure
+	bundlePath   string
+	err          error
 }
 
 // New constructs the root model from cfg.
