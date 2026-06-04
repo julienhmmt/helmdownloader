@@ -76,6 +76,7 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 | `-work-dir` | (from config) | Work directory for intermediate files (charts, images). If empty, a temporary directory is used |
 | `-resume` | `false` | Reuse image tarballs already present in a persistent work dir instead of re-pulling (use with `-work-dir`) |
 | `-compression` | `gzip` | Bundle compression codec: `gzip` (`.tar.gz`) or `zstd` (`.tar.zst`, smaller) |
+| `-min-free-mb` | `500` | Minimum free disk space (MiB) required on the work dir before downloading; `0` disables the check |
 | `-concurrency` | `4` | Maximum number of images downloaded in parallel |
 | `-retries` | `2` | Retry attempts per failed image pull (exponential backoff) |
 | `-proxy` | (from config) | Proxy URL for network requests (e.g. `http://proxy.domain.local:3128`) |

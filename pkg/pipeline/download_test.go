@@ -214,6 +214,25 @@ func TestRetries_FloorsAtZero(t *testing.T) {
 	assert.Equal(t, 4, pl.retries())
 }
 
+func TestCheckDiskSpace(t *testing.T) {
+	pl := newTestPipeline(&fakeSaver{}, 1)
+
+	// Disabled threshold always passes.
+	pl.cfg.MinFreeDiskMB = 0
+	assert.NoError(t, pl.checkDiskSpace(t.TempDir()))
+
+	// A tiny threshold is satisfied by any real temp dir.
+	pl.cfg.MinFreeDiskMB = 1
+	assert.NoError(t, pl.checkDiskSpace(t.TempDir()))
+
+	// An absurd threshold fails on every real filesystem (unix only, where
+	// freeBytes returns a real number; elsewhere it returns 0 and is skipped).
+	pl.cfg.MinFreeDiskMB = 1 << 40 // 1 PiB
+	if free, _ := freeBytes(t.TempDir()); free > 0 {
+		assert.ErrorContains(t, pl.checkDiskSpace(t.TempDir()), "insufficient disk space")
+	}
+}
+
 func TestBundle_RequiresAtLeastOneImage(t *testing.T) {
 	pl := newTestPipeline(&fakeSaver{}, 1)
 	_, err := pl.Bundle(Prepared{}, artifacthub.Package{Name: "c"}, "1.0.0", nil)

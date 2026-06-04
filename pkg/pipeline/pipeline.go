@@ -171,6 +171,9 @@ func (p *Pipeline) Download(ctx context.Context, prepared Prepared, refs []strin
 	if err := os.MkdirAll(imagesDir, 0o755); err != nil {
 		return nil, nil, fmt.Errorf("create images dir: %w", err)
 	}
+	if err := p.checkDiskSpace(imagesDir); err != nil {
+		return nil, nil, err
+	}
 
 	// Each ref writes its outcome to a fixed slot so the final results stay in
 	// input order regardless of completion order.
@@ -261,6 +264,32 @@ func (p *Pipeline) Download(ctx context.Context, prepared Prepared, refs []strin
 		}
 	}
 	return entries, failures, nil
+}
+
+// checkDiskSpace fails fast when the filesystem backing dir has less free space
+// than the configured minimum, so a long download does not abort mid-way with a
+// cryptic "no space left" error. A 0 threshold, an unsupported platform, or a
+// stat error all skip the check rather than block progress.
+func (p *Pipeline) checkDiskSpace(dir string) error {
+	if p.cfg.MinFreeDiskMB <= 0 {
+		return nil
+	}
+	free, err := freeBytes(dir)
+	if err != nil {
+		p.logger.Debugf("disk space check skipped: %v", err)
+		return nil
+	}
+	if free == 0 {
+		return nil
+	}
+	const mib = 1 << 20
+	needed := uint64(p.cfg.MinFreeDiskMB) * mib
+	if free < needed {
+		return fmt.Errorf("insufficient disk space in %s: %d MiB free, need at least %d MiB",
+			dir, free/mib, p.cfg.MinFreeDiskMB)
+	}
+	p.logger.Debugf("disk space ok: %d MiB free in %s", free/mib, dir)
+	return nil
 }
 
 // concurrency returns the effective parallel download limit, never below 1.

@@ -40,6 +40,7 @@ func main() {
 	platform := flag.String("platform", "", "override the image platform (e.g. linux/amd64)")
 	resume := flag.Bool("resume", false, "reuse image tarballs already present in a persistent work dir")
 	compression := flag.String("compression", "", "bundle compression: gzip (default) or zstd")
+	minFreeDiskMB := flag.Int("min-free-mb", -1, "minimum free disk space in MiB before download (0 disables)")
 	proxy := flag.String("proxy", "", "override proxy URL (e.g. http://proxy.domain.local:3128)")
 	verbose := flag.Bool("v", false, "enable verbose logging (shortcut for --log-level=debug)")
 	logLevel := flag.String("log-level", "", "set log level: silent, info, or debug (default: info)")
@@ -80,6 +81,9 @@ func main() {
 	}
 	if *compression != "" {
 		cfg.Compression = *compression
+	}
+	if *minFreeDiskMB >= 0 {
+		cfg.MinFreeDiskMB = *minFreeDiskMB
 	}
 	if *proxy != "" {
 		cfg.HTTPSProxy = *proxy

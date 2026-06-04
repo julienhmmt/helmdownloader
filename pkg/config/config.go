@@ -48,6 +48,9 @@ type Config struct {
 	// Compression selects the bundle archive codec: "gzip" (default) or "zstd"
 	// for a smaller archive.
 	Compression string `yaml:"compression"`
+	// MinFreeDiskMB is the minimum free space, in MiB, required on the work
+	// directory's filesystem before a download starts. 0 disables the check.
+	MinFreeDiskMB int `yaml:"min_free_disk_mb"`
 	// Verbose enables detailed logging to a file.
 	Verbose bool `yaml:"verbose"`
 	// LogFile is the path where verbose output is written.
@@ -62,6 +65,7 @@ func Default() Config {
 		ArtifactHubURL: "https://artifacthub.io",
 		Compression:    "gzip",
 		Concurrency:    4,
+		MinFreeDiskMB:  500,
 		HTTPSProxy:     "",
 		HelmBin:        "helm",
 		LogLevel:       "info",
