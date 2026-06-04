@@ -35,6 +35,12 @@ type Config struct {
 	ArtifactHubURL string `yaml:"artifacthub_url"`
 	// SearchLimit caps the number of search results requested.
 	SearchLimit int `yaml:"search_limit"`
+	// ValuesFiles are extra values files layered onto the chart when rendering
+	// for image discovery, so images gated on non-default values are found.
+	ValuesFiles []string `yaml:"values_files"`
+	// SetValues are "key=value" overrides applied when rendering for image
+	// discovery (helm --set), complementing ValuesFiles.
+	SetValues []string `yaml:"set_values"`
 	// Verbose enables detailed logging to a file.
 	Verbose bool `yaml:"verbose"`
 	// LogFile is the path where verbose output is written.

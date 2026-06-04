@@ -68,6 +68,8 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 | Flag | Default | Description |
 | ------ | ------- | ----------- |
 | `-config` | `~/.config/helmdownloader/config.yaml` | Path to config file |
+| `-values` | (none) | Extra values file layered onto the chart when rendering for image discovery (repeatable) |
+| `-set` | (none) | Values override `key=value` for image discovery, e.g. `monitoring.enabled=true` (repeatable) |
 | `-registry-prefix` | (from config) | Private registry prefix for retagging |
 | `-platform` | (from config) | Target platform for images, e.g. `linux/amd64` |
 | `-output` | (from config) | Output directory for bundles (default: archives) |
@@ -174,6 +176,8 @@ This means:
 - ✅ Images in initContainers are found
 - ✅ Sidecar images are found
 - ⚠️ Images behind conditional logic (e.g. `{{- if .Values.monitoring.enabled }}`) may be missed if the condition is false with default values
+
+To surface conditional images at render time, pass extra values with `-values myvalues.yaml` or `-set monitoring.enabled=true` (both repeatable). These only widen discovery; the bundle still ships the chart's default `values.yaml`.
 
 You can always manually add missing images using the `a` key on the Review screen.
 

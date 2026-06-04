@@ -42,6 +42,17 @@ func TestFindChart_NoArchiveErrors(t *testing.T) {
 	assert.ErrorContains(t, err, "no chart archive")
 }
 
+func TestTemplateOptions_AppendArgs(t *testing.T) {
+	args := []string{"template", "release", "chart.tgz"}
+	WithValuesFile("custom.yaml")(&args)
+	WithSetValue("monitoring.enabled=true")(&args)
+	assert.Equal(t, []string{
+		"template", "release", "chart.tgz",
+		"--values", "custom.yaml",
+		"--set", "monitoring.enabled=true",
+	}, args)
+}
+
 func TestCheck_MissingBinary(t *testing.T) {
 	err := New("helm-binary-that-does-not-exist-xyz", "", log.Discard()).Check(context.Background())
 	assert.ErrorContains(t, err, "not found")

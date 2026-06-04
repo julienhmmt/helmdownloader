@@ -75,11 +75,32 @@ func (c *Client) Pull(ctx context.Context, name, repoURL, version, destDir strin
 	return PullResult{ChartPath: chartPath, Dir: destDir}, nil
 }
 
-// Template renders the chart archive at chartPath with default values and
-// returns the concatenated manifest YAML.
-func (c *Client) Template(ctx context.Context, chartPath string) (string, error) {
-	c.logger.Debugf("helm template: %s", chartPath)
-	out, err := c.run(ctx, "template", "release", chartPath)
+// TemplateOption customises a helm template invocation, e.g. to supply extra
+// values files or --set overrides so conditional images render and can be
+// discovered.
+type TemplateOption func(args *[]string)
+
+// WithValuesFile adds "-f path" to the template command.
+func WithValuesFile(path string) TemplateOption {
+	return func(args *[]string) { *args = append(*args, "--values", path) }
+}
+
+// WithSetValue adds "--set key=value" to the template command.
+func WithSetValue(kv string) TemplateOption {
+	return func(args *[]string) { *args = append(*args, "--set", kv) }
+}
+
+// Template renders the chart archive at chartPath and returns the concatenated
+// manifest YAML. Without options it renders with the chart's default values;
+// options can layer extra values files or --set overrides to surface images
+// that are conditional on non-default values.
+func (c *Client) Template(ctx context.Context, chartPath string, opts ...TemplateOption) (string, error) {
+	args := []string{"template", "release", chartPath}
+	for _, opt := range opts {
+		opt(&args)
+	}
+	c.logger.Debugf("helm template: %s %s", c.bin, strings.Join(args, " "))
+	out, err := c.run(ctx, args...)
 	if err != nil {
 		return "", err
 	}

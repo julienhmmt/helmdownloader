@@ -100,7 +100,17 @@ func (p *Pipeline) Prepare(ctx context.Context, pkg artifacthub.Package, version
 		return Prepared{}, err
 	}
 	p.logger.Debugf("loaded values.yaml (%d bytes)", len(values))
-	manifests, err := p.helm.Template(ctx, pull.ChartPath)
+	var templateOpts []helm.TemplateOption
+	for _, f := range p.cfg.ValuesFiles {
+		templateOpts = append(templateOpts, helm.WithValuesFile(f))
+	}
+	for _, kv := range p.cfg.SetValues {
+		templateOpts = append(templateOpts, helm.WithSetValue(kv))
+	}
+	if len(templateOpts) > 0 {
+		p.logger.Infof("rendering with %d values file(s) and %d --set override(s) for discovery", len(p.cfg.ValuesFiles), len(p.cfg.SetValues))
+	}
+	manifests, err := p.helm.Template(ctx, pull.ChartPath, templateOpts...)
 	if err != nil {
 		return Prepared{}, err
 	}

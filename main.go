@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/julienhmmt/helmdownloader/internal/tui"
 	"github.com/julienhmmt/helmdownloader/pkg/config"
@@ -14,7 +15,21 @@ import (
 	"github.com/julienhmmt/helmdownloader/pkg/log"
 )
 
+// stringSlice is a flag.Value that accumulates repeated flag occurrences, so
+// "-values a.yaml -values b.yaml" yields ["a.yaml", "b.yaml"].
+type stringSlice []string
+
+func (s *stringSlice) String() string { return strings.Join(*s, ",") }
+
+func (s *stringSlice) Set(v string) error {
+	*s = append(*s, v)
+	return nil
+}
+
 func main() {
+	var valuesFiles, setValues stringSlice
+	flag.Var(&valuesFiles, "values", "extra values file for image discovery (repeatable)")
+	flag.Var(&setValues, "set", "values override key=value for image discovery (repeatable)")
 	configPath := flag.String("config", config.DefaultPath(), "path to config file")
 	outputDir := flag.String("output", "", "override output directory for bundles")
 	workDir := flag.String("work-dir", "", "override work directory for intermediate files (charts, images)")
@@ -50,6 +65,12 @@ func main() {
 	}
 	if *platform != "" {
 		cfg.Platform = *platform
+	}
+	if len(valuesFiles) > 0 {
+		cfg.ValuesFiles = valuesFiles
+	}
+	if len(setValues) > 0 {
+		cfg.SetValues = setValues
 	}
 	if *proxy != "" {
 		cfg.HTTPSProxy = *proxy
