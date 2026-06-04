@@ -21,6 +21,8 @@ Use the `task` runner (Taskfile.yml):
 | Test w/ race | `task test-race` |
 | Vet | `task go-vet` |
 | Lint | `task go-lint` (golangci-lint) |
+| Vuln scan | `task govulncheck` |
+| Security (vet+lint+vuln) | `task security` |
 | Install | `task install` |
 
 Run a single package's tests: `go test ./pkg/pipeline/ -run TestName -v`.

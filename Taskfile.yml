@@ -43,6 +43,18 @@ tasks:
     cmds:
       - go vet ./...
 
+  govulncheck:
+    desc: Scan code and dependencies for known vulnerabilities (CVEs)
+    cmds:
+      - go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  security:
+    desc: Run all static analysis and vulnerability checks
+    cmds:
+      - task: go-vet
+      - task: go-lint
+      - task: govulncheck
+
   go-update:
     desc: Update Go module dependencies
     cmds:
