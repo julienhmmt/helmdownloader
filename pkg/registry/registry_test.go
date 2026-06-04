@@ -13,7 +13,7 @@ import (
 func TestSave_InvalidProxyErrorsBeforeNetwork(t *testing.T) {
 	p := registry.NewPuller("linux/amd64", "://missing-scheme", log.Discard())
 	_, err := p.Save(context.Background(), "redis:7", "rgy.local/redis:7",
-		filepath.Join(t.TempDir(), "out.tar"))
+		filepath.Join(t.TempDir(), "out.tar"), nil)
 	assert.ErrorContains(t, err, "proxy")
 }
 
@@ -24,6 +24,6 @@ func TestNewPuller_DefaultsPlatform(t *testing.T) {
 	// before any network call.
 	p := registry.NewPuller("", "://bad", log.Discard())
 	_, err := p.Save(context.Background(), "redis:7", "rgy.local/redis:7",
-		filepath.Join(t.TempDir(), "out.tar"))
+		filepath.Join(t.TempDir(), "out.tar"), nil)
 	assert.ErrorContains(t, err, "proxy")
 }

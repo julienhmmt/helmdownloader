@@ -13,6 +13,7 @@ import (
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
 	"github.com/julienhmmt/helmdownloader/pkg/config"
 	"github.com/julienhmmt/helmdownloader/pkg/log"
+	"github.com/julienhmmt/helmdownloader/pkg/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +33,7 @@ type fakeSaver struct {
 	attempts map[string]int
 }
 
-func (f *fakeSaver) Save(ctx context.Context, srcRef, destRef, destPath string) (string, error) {
+func (f *fakeSaver) Save(ctx context.Context, srcRef, destRef, destPath string, onBytes registry.BytesFunc) (string, error) {
 	f.mu.Lock()
 	f.inFlight++
 	if f.inFlight > f.peak {
@@ -82,7 +83,7 @@ func TestDownload_PreservesInputOrder(t *testing.T) {
 	saver := &fakeSaver{delay: 2 * time.Millisecond}
 	pl := newTestPipeline(saver, 4)
 
-	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil)
+	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, failures)
 	require.Len(t, entries, len(refs))
@@ -97,7 +98,7 @@ func TestDownload_PartitionsFailures(t *testing.T) {
 	saver := &fakeSaver{failRefs: map[string]bool{"docker.io/bad/two:2": true}}
 	pl := newTestPipeline(saver, 2)
 
-	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil)
+	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, entries, 2)
 	require.Len(t, failures, 1)
@@ -115,7 +116,7 @@ func TestDownload_RespectsConcurrencyLimit(t *testing.T) {
 	saver := &fakeSaver{delay: 10 * time.Millisecond}
 	pl := newTestPipeline(saver, 3)
 
-	_, _, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil)
+	_, _, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil, nil)
 	require.NoError(t, err)
 	assert.LessOrEqual(t, saver.peak, 3, "exceeded concurrency limit")
 	assert.Greater(t, saver.peak, 1, "did not run in parallel")
@@ -135,7 +136,7 @@ func TestDownload_ReportsProgressOncePerImage(t *testing.T) {
 				atomic.StoreInt32(&maxCurrent, int32(current))
 			}
 			assert.Equal(t, len(refs), total)
-		})
+		}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, int32(len(refs)), calls)
 	assert.Equal(t, int32(len(refs)), maxCurrent)
@@ -155,7 +156,7 @@ func TestDownload_ResumeReusesExistingTarball(t *testing.T) {
 	require.NoError(t, os.WriteFile(cachedTar, []byte("cached"), 0o644))
 	require.NoError(t, os.WriteFile(cachedTar+".digest", []byte("sha256:cached"), 0o644))
 
-	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: workDir}, refs, nil)
+	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: workDir}, refs, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, failures)
 	require.Len(t, entries, 2)
@@ -171,7 +172,7 @@ func TestDownload_RetriesTransientFailures(t *testing.T) {
 	saver := &fakeSaver{failUntil: map[string]int{"docker.io/flaky/img:1": 2}}
 	pl := newTestPipeline(saver, 1) // retries default to 2 -> 3 attempts
 
-	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil)
+	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, failures)
 	require.Len(t, entries, 1)
@@ -184,7 +185,7 @@ func TestDownload_GivesUpAfterRetryBudget(t *testing.T) {
 	pl := newTestPipeline(saver, 1)
 	pl.cfg.Retries = 1 // 2 attempts total
 
-	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil)
+	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, entries)
 	require.Len(t, failures, 1)
@@ -199,7 +200,7 @@ func TestSaveWithRetry_StopsOnCancelledContext(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := pl.saveWithRetry(ctx, "x:1", "rgy.local/x:1", t.TempDir()+"/x.tar")
+	_, err := pl.saveWithRetry(ctx, "x:1", "rgy.local/x:1", t.TempDir()+"/x.tar", nil)
 	assert.Error(t, err)
 	// One attempt runs, then the cancelled context aborts before any backoff.
 	assert.Equal(t, 1, saver.attemptCount("x:1"))

@@ -37,10 +37,11 @@ type Prepared struct {
 }
 
 // imageSaver pulls a source image and writes it to a tarball retagged as
-// destRef, returning the resolved manifest digest. *registry.Puller is the
+// destRef, returning the resolved manifest digest. onBytes, when non-nil,
+// receives byte-level progress during the write. *registry.Puller is the
 // production implementation; tests substitute a fake.
 type imageSaver interface {
-	Save(ctx context.Context, srcRef, destRef, destPath string) (string, error)
+	Save(ctx context.Context, srcRef, destRef, destPath string, onBytes registry.BytesFunc) (string, error)
 }
 
 // defaultRetryBaseDelay is the first backoff interval; it doubles each retry.
@@ -136,6 +137,10 @@ func (p *Pipeline) Prepare(ctx context.Context, pkg artifacthub.Package, version
 // ProgressFunc reports download progress as each image is processed.
 type ProgressFunc func(current, total int, ref string, err error)
 
+// ByteProgressFunc reports byte-level progress for an in-flight image pull.
+// total is best-effort and may be 0 when the registry does not report sizes.
+type ByteProgressFunc func(ref string, written, total int64)
+
 // ImageFailure records an image reference that could not be downloaded and the
 // error that prevented it.
 type ImageFailure struct {
@@ -153,7 +158,7 @@ type ImageFailure struct {
 // reported as each image finishes; current is the number completed so far,
 // which may not match the position of ref in refs because pulls finish out of
 // order.
-func (p *Pipeline) Download(ctx context.Context, prepared Prepared, refs []string, progress ProgressFunc) ([]bundle.ImageEntry, []ImageFailure, error) {
+func (p *Pipeline) Download(ctx context.Context, prepared Prepared, refs []string, progress ProgressFunc, byteProgress ByteProgressFunc) ([]bundle.ImageEntry, []ImageFailure, error) {
 	limit := p.concurrency()
 	p.logger.Infof("downloading %d images (concurrency %d)", len(refs), limit)
 	imagesDir := filepath.Join(prepared.WorkDir, "images")
@@ -202,7 +207,11 @@ func (p *Pipeline) Download(ctx context.Context, prepared Prepared, refs []strin
 			}
 
 			p.logger.Debugf("saving image %d/%d: %s -> %s", index+1, len(refs), srcRef, destRef)
-			digest, err := p.saveWithRetry(groupCtx, srcRef, destRef, tarPath)
+			var onBytes registry.BytesFunc
+			if byteProgress != nil {
+				onBytes = func(written, total int64) { byteProgress(ref, written, total) }
+			}
+			digest, err := p.saveWithRetry(groupCtx, srcRef, destRef, tarPath, onBytes)
 
 			mu.Lock()
 			completed++
@@ -268,7 +277,7 @@ func (p *Pipeline) retries() int {
 // backoff up to the configured retry count, and returns the resolved digest on
 // success. Backoff waits are cancellable: if ctx is done, the last error is
 // returned immediately without sleeping.
-func (p *Pipeline) saveWithRetry(ctx context.Context, srcRef, destRef, tarPath string) (string, error) {
+func (p *Pipeline) saveWithRetry(ctx context.Context, srcRef, destRef, tarPath string, onBytes registry.BytesFunc) (string, error) {
 	attempts := p.retries() + 1
 	delay := p.retryBaseDelay
 	if delay <= 0 {
@@ -279,7 +288,7 @@ func (p *Pipeline) saveWithRetry(ctx context.Context, srcRef, destRef, tarPath s
 		err    error
 	)
 	for attempt := 1; attempt <= attempts; attempt++ {
-		if digest, err = p.puller.Save(ctx, srcRef, destRef, tarPath); err == nil {
+		if digest, err = p.puller.Save(ctx, srcRef, destRef, tarPath, onBytes); err == nil {
 			return digest, nil
 		}
 		if ctx.Err() != nil || attempt == attempts {
