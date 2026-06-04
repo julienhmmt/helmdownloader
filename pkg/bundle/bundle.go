@@ -4,7 +4,6 @@ package bundle
 
 import (
 	"archive/tar"
-	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -42,6 +41,9 @@ type Spec struct {
 	Images []ImageEntry
 	// OutputDir is where the bundle archive is written.
 	OutputDir string
+	// Compression selects the archive codec: "gzip" (default, .tar.gz) or
+	// "zstd" (.tar.zst), which gives a smaller bundle for airgap transfer.
+	Compression string
 }
 
 // Create writes the bundle archive and returns its path. The archive contains:
@@ -56,7 +58,11 @@ func Create(spec Spec) (path string, err error) {
 	if err = os.MkdirAll(spec.OutputDir, 0o755); err != nil {
 		return "", err
 	}
-	outName := fmt.Sprintf("%s-%s-bundle.tar.gz", spec.ChartName, spec.ChartVersion)
+	codec, ext, err := compressorFor(spec.Compression)
+	if err != nil {
+		return "", err
+	}
+	outName := fmt.Sprintf("%s-%s-bundle.tar.%s", spec.ChartName, spec.ChartVersion, ext)
 	outPath := filepath.Join(spec.OutputDir, outName)
 	out, err := os.Create(outPath)
 	if err != nil {
@@ -68,11 +74,14 @@ func Create(spec Spec) (path string, err error) {
 			_ = os.Remove(outPath)
 		}
 	}()
-	gzipWriter := gzip.NewWriter(out)
+	compWriter, err := codec(out)
+	if err != nil {
+		return "", err
+	}
 	defer func() {
-		_ = gzipWriter.Close()
+		_ = compWriter.Close()
 	}()
-	tarWriter := tar.NewWriter(gzipWriter)
+	tarWriter := tar.NewWriter(compWriter)
 	defer func() {
 		_ = tarWriter.Close()
 	}()

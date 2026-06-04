@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/julienhmmt/helmdownloader/internal/tui"
+	"github.com/julienhmmt/helmdownloader/pkg/bundle"
 	"github.com/julienhmmt/helmdownloader/pkg/config"
 	"github.com/julienhmmt/helmdownloader/pkg/helm"
 	"github.com/julienhmmt/helmdownloader/pkg/log"
@@ -38,6 +39,7 @@ func main() {
 	prefix := flag.String("registry-prefix", "", "override the private registry prefix")
 	platform := flag.String("platform", "", "override the image platform (e.g. linux/amd64)")
 	resume := flag.Bool("resume", false, "reuse image tarballs already present in a persistent work dir")
+	compression := flag.String("compression", "", "bundle compression: gzip (default) or zstd")
 	proxy := flag.String("proxy", "", "override proxy URL (e.g. http://proxy.domain.local:3128)")
 	verbose := flag.Bool("v", false, "enable verbose logging (shortcut for --log-level=debug)")
 	logLevel := flag.String("log-level", "", "set log level: silent, info, or debug (default: info)")
@@ -76,6 +78,9 @@ func main() {
 	if *resume {
 		cfg.Resume = true
 	}
+	if *compression != "" {
+		cfg.Compression = *compression
+	}
 	if *proxy != "" {
 		cfg.HTTPSProxy = *proxy
 	}
@@ -97,6 +102,11 @@ func main() {
 	}
 	if cfg.LogFile == "" {
 		cfg.LogFile = *logFile
+	}
+
+	if err := bundle.ValidateCompression(cfg.Compression); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
 	}
 
 	logger := createLogger(cfg)

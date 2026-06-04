@@ -326,6 +326,7 @@ func (p *Pipeline) Bundle(prepared Prepared, pkg artifacthub.Package, version st
 		Values:       prepared.Values,
 		Images:       entries,
 		OutputDir:    p.cfg.OutputDir,
+		Compression:  p.cfg.Compression,
 	})
 	if err != nil {
 		return "", err

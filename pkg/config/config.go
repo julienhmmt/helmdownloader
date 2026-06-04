@@ -45,6 +45,9 @@ type Config struct {
 	// work directory instead of pulling them again. Only meaningful with a
 	// fixed work_dir; a temporary work dir is empty on each run.
 	Resume bool `yaml:"resume"`
+	// Compression selects the bundle archive codec: "gzip" (default) or "zstd"
+	// for a smaller archive.
+	Compression string `yaml:"compression"`
 	// Verbose enables detailed logging to a file.
 	Verbose bool `yaml:"verbose"`
 	// LogFile is the path where verbose output is written.
@@ -57,6 +60,7 @@ type Config struct {
 func Default() Config {
 	return Config{
 		ArtifactHubURL: "https://artifacthub.io",
+		Compression:    "gzip",
 		Concurrency:    4,
 		HTTPSProxy:     "",
 		HelmBin:        "helm",

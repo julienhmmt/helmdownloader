@@ -75,6 +75,7 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 | `-output` | (from config) | Output directory for bundles (default: archives) |
 | `-work-dir` | (from config) | Work directory for intermediate files (charts, images). If empty, a temporary directory is used |
 | `-resume` | `false` | Reuse image tarballs already present in a persistent work dir instead of re-pulling (use with `-work-dir`) |
+| `-compression` | `gzip` | Bundle compression codec: `gzip` (`.tar.gz`) or `zstd` (`.tar.zst`, smaller) |
 | `-concurrency` | `4` | Maximum number of images downloaded in parallel |
 | `-retries` | `2` | Retry attempts per failed image pull (exponential backoff) |
 | `-proxy` | (from config) | Proxy URL for network requests (e.g. `http://proxy.domain.local:3128`) |
@@ -104,7 +105,7 @@ log_file: "helmdownloader.log"
 
 ## Bundle Format
 
-Each bundle is a `.tar.gz` named `<chart>-<version>-bundle.tar.gz` containing:
+Each bundle is a `.tar.gz` (or `.tar.zst` with `-compression zstd`) named `<chart>-<version>-bundle.tar.gz` containing:
 
 ```text
 <chart>-<version>.tgz     # the Helm chart

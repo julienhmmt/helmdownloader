@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -103,6 +104,54 @@ func TestCreate_WritesAllEntries(t *testing.T) {
 	}
 	// load.sh verifies before pushing.
 	assert.Contains(t, contents["load.sh"], "sha256sums.txt")
+}
+
+func TestCreate_ZstdProducesZstExtension(t *testing.T) {
+	work := t.TempDir()
+	out := t.TempDir()
+	chart := writeTemp(t, work, "c-1.0.0.tgz", "chart")
+	img := writeTemp(t, work, "i.tar", "tar")
+
+	path, err := Create(Spec{
+		ChartName:    "c",
+		ChartVersion: "1.0.0",
+		ChartPath:    chart,
+		OutputDir:    out,
+		Compression:  "zstd",
+		Images:       []ImageEntry{{TarPath: img, SourceRef: "redis:7", DestRef: "rgy.local/redis:7"}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(out, "c-1.0.0-bundle.tar.zst"), path)
+
+	// The archive must be readable back through the zstd decoder.
+	f, err := os.Open(path)
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, f.Close()) }()
+	zr, err := zstd.NewReader(f)
+	require.NoError(t, err)
+	defer zr.Close()
+	tr := tar.NewReader(zr)
+	var names []string
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		names = append(names, hdr.Name)
+	}
+	assert.Contains(t, names, "c-1.0.0.tgz")
+	assert.Contains(t, names, "load.sh")
+}
+
+func TestCreate_RejectsUnknownCompression(t *testing.T) {
+	_, err := Create(Spec{
+		ChartName: "c", ChartVersion: "1.0.0",
+		ChartPath: writeTemp(t, t.TempDir(), "c.tgz", "x"),
+		OutputDir: t.TempDir(), Compression: "lzma",
+		Images: []ImageEntry{{TarPath: writeTemp(t, t.TempDir(), "i.tar", "y"), DestRef: "r/x:1"}},
+	})
+	assert.ErrorContains(t, err, "unknown compression")
 }
 
 func TestCreate_LoadScriptListsImages(t *testing.T) {
