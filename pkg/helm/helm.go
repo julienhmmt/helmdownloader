@@ -3,9 +3,12 @@
 package helm
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -111,6 +114,57 @@ func (c *Client) Template(ctx context.Context, chartPath string, opts ...Templat
 func (c *Client) ShowValues(ctx context.Context, chartPath string) (string, error) {
 	c.logger.Debugf("helm show values: %s", chartPath)
 	return c.run(ctx, "show", "values", chartPath)
+}
+
+// maxValuesFileSize caps a single values.yaml read from the archive, guarding
+// against a malicious or corrupt chart with an enormous entry.
+const maxValuesFileSize = 8 << 20 // 8 MiB
+
+// SubchartValues reads every values.yaml bundled inside the chart archive at
+// chartPath except the top-level one (which ShowValues already returns),
+// returning their raw contents. Subchart values often declare images for
+// components that are disabled by default, which the rendered manifests and the
+// parent values alone would miss. A read error on the archive is returned;
+// individual malformed entries are skipped.
+func (c *Client) SubchartValues(chartPath string) ([]string, error) {
+	f, err := os.Open(chartPath)
+	if err != nil {
+		return nil, fmt.Errorf("open chart archive: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return nil, fmt.Errorf("read chart gzip: %w", err)
+	}
+	defer func() { _ = gz.Close() }()
+
+	var out []string
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read chart tar: %w", err)
+		}
+		if hdr.Typeflag != tar.TypeReg || filepath.Base(hdr.Name) != "values.yaml" {
+			continue
+		}
+		// A top-level values.yaml sits directly under "<chart>/"; anything with a
+		// "charts/" segment belongs to a subchart and is the part we want here.
+		if !strings.Contains(hdr.Name, "/charts/") {
+			continue
+		}
+		data, err := io.ReadAll(io.LimitReader(tr, maxValuesFileSize))
+		if err != nil {
+			c.logger.Debugf("skipping unreadable %s: %v", hdr.Name, err)
+			continue
+		}
+		c.logger.Debugf("scanning subchart values: %s (%d bytes)", hdr.Name, len(data))
+		out = append(out, string(data))
+	}
+	return out, nil
 }
 
 // run executes helm with args and returns stdout, wrapping failures with stderr.

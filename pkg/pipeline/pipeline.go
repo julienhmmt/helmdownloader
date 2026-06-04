@@ -116,11 +116,17 @@ func (p *Pipeline) Prepare(ctx context.Context, pkg artifacthub.Package, version
 		return Prepared{}, err
 	}
 	p.logger.Debugf("templated manifests (%d bytes)", len(manifests))
-	// Scan both the rendered manifests and the chart's values.yaml. Values
-	// often declare images for components disabled in the default render
-	// (using the split registry/repository/tag form), which the manifests
-	// alone would miss.
-	extracted := images.Extract(manifests, values)
+	// Scan the rendered manifests, the chart's top-level values.yaml, and every
+	// subchart values.yaml. Values often declare images for components disabled
+	// in the default render (using the split registry/repository/tag form),
+	// which the manifests alone would miss; subcharts hide them one level deeper.
+	sources := []string{manifests, values}
+	if subValues, err := p.helm.SubchartValues(pull.ChartPath); err != nil {
+		p.logger.Debugf("could not scan subchart values: %v", err)
+	} else {
+		sources = append(sources, subValues...)
+	}
+	extracted := images.Extract(sources...)
 	p.logger.Infof("discovered %d images", len(extracted))
 	for _, img := range extracted {
 		p.logger.Debugf("  image: %s", img.Ref)

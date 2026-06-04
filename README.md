@@ -176,6 +176,7 @@ This means:
 - ✅ Images in Deployments, StatefulSets, DaemonSets, Jobs, CronJobs, etc. are found
 - ✅ Images in initContainers are found
 - ✅ Sidecar images are found
+- ✅ Subchart images are found — every bundled `charts/*/values.yaml` is scanned, catching split-form images for components disabled by default
 - ⚠️ Images behind conditional logic (e.g. `{{- if .Values.monitoring.enabled }}`) may be missed if the condition is false with default values
 
 To surface conditional images at render time, pass extra values with `-values myvalues.yaml` or `-set monitoring.enabled=true` (both repeatable). These only widen discovery; the bundle still ships the chart's default `values.yaml`.
