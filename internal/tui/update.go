@@ -34,6 +34,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case progressMsg:
 		m.downCurrent, m.downTotal, m.downRef = typed.current, typed.total, typed.ref
 		m.downErr = typed.err
+		// A finished image clears any stale byte counter for the next one.
+		m.downBytesRef, m.downWritten, m.downSize = "", 0, 0
+		return m, waitForActivity(m.activity)
+	case byteProgressMsg:
+		m.downBytesRef, m.downWritten, m.downSize = typed.ref, typed.written, typed.total
 		return m, waitForActivity(m.activity)
 	case downloadDoneMsg:
 		m.entries = append(m.entries, typed.entries...)

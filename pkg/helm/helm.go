@@ -3,9 +3,12 @@
 package helm
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -75,11 +78,32 @@ func (c *Client) Pull(ctx context.Context, name, repoURL, version, destDir strin
 	return PullResult{ChartPath: chartPath, Dir: destDir}, nil
 }
 
-// Template renders the chart archive at chartPath with default values and
-// returns the concatenated manifest YAML.
-func (c *Client) Template(ctx context.Context, chartPath string) (string, error) {
-	c.logger.Debugf("helm template: %s", chartPath)
-	out, err := c.run(ctx, "template", "release", chartPath)
+// TemplateOption customises a helm template invocation, e.g. to supply extra
+// values files or --set overrides so conditional images render and can be
+// discovered.
+type TemplateOption func(args *[]string)
+
+// WithValuesFile adds "-f path" to the template command.
+func WithValuesFile(path string) TemplateOption {
+	return func(args *[]string) { *args = append(*args, "--values", path) }
+}
+
+// WithSetValue adds "--set key=value" to the template command.
+func WithSetValue(kv string) TemplateOption {
+	return func(args *[]string) { *args = append(*args, "--set", kv) }
+}
+
+// Template renders the chart archive at chartPath and returns the concatenated
+// manifest YAML. Without options it renders with the chart's default values;
+// options can layer extra values files or --set overrides to surface images
+// that are conditional on non-default values.
+func (c *Client) Template(ctx context.Context, chartPath string, opts ...TemplateOption) (string, error) {
+	args := []string{"template", "release", chartPath}
+	for _, opt := range opts {
+		opt(&args)
+	}
+	c.logger.Debugf("helm template: %s %s", c.bin, strings.Join(args, " "))
+	out, err := c.run(ctx, args...)
 	if err != nil {
 		return "", err
 	}
@@ -90,6 +114,68 @@ func (c *Client) Template(ctx context.Context, chartPath string) (string, error)
 func (c *Client) ShowValues(ctx context.Context, chartPath string) (string, error) {
 	c.logger.Debugf("helm show values: %s", chartPath)
 	return c.run(ctx, "show", "values", chartPath)
+}
+
+// maxValuesFileSize caps a single values.yaml read from the archive, and
+// maxValuesTotal caps the sum across all subcharts, so a malicious or corrupt
+// chart cannot exhaust memory through one huge or many merely-large entries.
+const (
+	maxValuesFileSize = 8 << 20  // 8 MiB per file
+	maxValuesTotal    = 64 << 20 // 64 MiB across all subchart values
+)
+
+// SubchartValues reads every values.yaml bundled inside the chart archive at
+// chartPath except the top-level one (which ShowValues already returns),
+// returning their raw contents. Subchart values often declare images for
+// components that are disabled by default, which the rendered manifests and the
+// parent values alone would miss. A read error on the archive is returned;
+// individual malformed entries are skipped.
+func (c *Client) SubchartValues(chartPath string) ([]string, error) {
+	f, err := os.Open(chartPath)
+	if err != nil {
+		return nil, fmt.Errorf("open chart archive: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return nil, fmt.Errorf("read chart gzip: %w", err)
+	}
+	defer func() { _ = gz.Close() }()
+
+	var (
+		out   []string
+		total int64
+	)
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read chart tar: %w", err)
+		}
+		if hdr.Typeflag != tar.TypeReg || filepath.Base(hdr.Name) != "values.yaml" {
+			continue
+		}
+		// A top-level values.yaml sits directly under "<chart>/"; anything with a
+		// "charts/" segment belongs to a subchart and is the part we want here.
+		if !strings.Contains(hdr.Name, "/charts/") {
+			continue
+		}
+		data, err := io.ReadAll(io.LimitReader(tr, maxValuesFileSize))
+		if err != nil {
+			c.logger.Debugf("skipping unreadable %s: %v", hdr.Name, err)
+			continue
+		}
+		c.logger.Debugf("scanning subchart values: %s (%d bytes)", hdr.Name, len(data))
+		out = append(out, string(data))
+		if total += int64(len(data)); total >= maxValuesTotal {
+			c.logger.Debugf("subchart values budget (%d bytes) reached, stopping scan", maxValuesTotal)
+			break
+		}
+	}
+	return out, nil
 }
 
 // run executes helm with args and returns stdout, wrapping failures with stderr.

@@ -68,10 +68,15 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 | Flag | Default | Description |
 | ------ | ------- | ----------- |
 | `-config` | `~/.config/helmdownloader/config.yaml` | Path to config file |
+| `-values` | (none) | Extra values file layered onto the chart when rendering for image discovery (repeatable) |
+| `-set` | (none) | Values override `key=value` for image discovery, e.g. `monitoring.enabled=true` (repeatable) |
 | `-registry-prefix` | (from config) | Private registry prefix for retagging |
 | `-platform` | (from config) | Target platform for images, e.g. `linux/amd64` |
 | `-output` | (from config) | Output directory for bundles (default: archives) |
 | `-work-dir` | (from config) | Work directory for intermediate files (charts, images). If empty, a temporary directory is used |
+| `-resume` | `false` | Reuse image tarballs already present in a persistent work dir instead of re-pulling (use with `-work-dir`) |
+| `-compression` | `gzip` | Bundle compression codec: `gzip` (`.tar.gz`) or `zstd` (`.tar.zst`, smaller) |
+| `-min-free-mb` | `500` | Minimum free disk space (MiB) required on the work dir before downloading; `0` disables the check |
 | `-concurrency` | `4` | Maximum number of images downloaded in parallel |
 | `-retries` | `2` | Retry attempts per failed image pull (exponential backoff) |
 | `-proxy` | (from config) | Proxy URL for network requests (e.g. `http://proxy.domain.local:3128`) |
@@ -101,7 +106,7 @@ log_file: "helmdownloader.log"
 
 ## Bundle Format
 
-Each bundle is a `.tar.gz` named `<chart>-<version>-bundle.tar.gz` containing:
+Each bundle is a `.tar.gz` (or `.tar.zst` with `-compression zstd`) named `<chart>-<version>-bundle.tar.gz` containing:
 
 ```text
 <chart>-<version>.tgz     # the Helm chart
@@ -109,19 +114,24 @@ values.yaml               # default chart values
 images/
   <image1>.tar            # retagged image tarball
   <image2>.tar
-images.txt                # manifest: source_ref  dest_ref  tar_name
-load.sh                   # loads and pushes every image to the registry
+images.txt                # manifest: source_ref  dest_ref  tar_name  digest
+manifest.json             # provenance: tool, chart, codec, images + digests
+sha256sums.txt            # sha256 of every bundled file (sha256sum -c format)
+load.sh                   # verifies checksums, then loads and pushes every image
 ```
 
-The `images.txt` manifest maps original references to their retagged counterparts, making it easy to script the import side on airgapped infrastructure.
+The `images.txt` manifest maps original references to their retagged counterparts and records the resolved manifest digest (`sha256:...`, or `-` when the registry reported none) of exactly what was bundled, making it easy to script and verify the import side on airgapped infrastructure.
 
 On the airgapped side, extract the bundle and run the generated `load.sh` to load every image into your container engine and push it to the target registry:
 
 ```bash
 tar xzf argo-cd-1.0.0-bundle.tar.gz
-./load.sh            # uses docker by default
-ENGINE=podman ./load.sh
+./load.sh                  # verifies checksums, then loads + pushes (docker by default)
+ENGINE=podman ./load.sh    # use podman instead
+DRY_RUN=1 ./load.sh        # print load/push commands without running them
 ```
+
+`load.sh` verifies `sha256sums.txt` before touching the registry, skips loading any image already present locally (idempotent re-runs), and honors `DRY_RUN=1` for a no-op preview.
 
 ## Architecture
 
@@ -172,7 +182,10 @@ This means:
 - ✅ Images in Deployments, StatefulSets, DaemonSets, Jobs, CronJobs, etc. are found
 - ✅ Images in initContainers are found
 - ✅ Sidecar images are found
+- ✅ Subchart images are found — every bundled `charts/*/values.yaml` is scanned, catching split-form images for components disabled by default
 - ⚠️ Images behind conditional logic (e.g. `{{- if .Values.monitoring.enabled }}`) may be missed if the condition is false with default values
+
+To surface conditional images at render time, pass extra values with `-values myvalues.yaml` or `-set monitoring.enabled=true` (both repeatable). These only widen discovery; the bundle still ships the chart's default `values.yaml`.
 
 You can always manually add missing images using the `a` key on the Review screen.
 

@@ -115,6 +115,16 @@ func (m model) viewDownloading() string {
 	fmt.Fprintf(&builder, "  %s  %d/%d\n\n", m.progress.ViewAs(percent), m.downCurrent, m.downTotal)
 	fmt.Fprintf(&builder, "  %s %s\n", m.spinner.View(), m.downRef)
 
+	// Show byte-level progress for the in-flight image when available.
+	if m.downWritten > 0 {
+		if m.downSize > 0 {
+			fmt.Fprintf(&builder, "    %s / %s\n",
+				humanBytes(m.downWritten), humanBytes(m.downSize))
+		} else {
+			fmt.Fprintf(&builder, "    %s\n", humanBytes(m.downWritten))
+		}
+	}
+
 	if len(m.failures) > 0 {
 		builder.WriteString(m.styles.errorMsg.Render(
 			fmt.Sprintf("  %d failed so far\n", len(m.failures))))
@@ -150,6 +160,20 @@ func (m model) viewDownloadReview() string {
 	}
 	builder.WriteString(m.styles.help.Render(footer))
 	return builder.String()
+}
+
+// humanBytes formats a byte count with a binary unit suffix, e.g. 1536 -> "1.5 KiB".
+func humanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for v := n / unit; v >= unit; v /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
 // errLine renders an error as a single trimmed line for compact display.

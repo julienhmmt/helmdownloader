@@ -3,6 +3,8 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -11,6 +13,7 @@ import (
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
 	"github.com/julienhmmt/helmdownloader/pkg/config"
 	"github.com/julienhmmt/helmdownloader/pkg/log"
+	"github.com/julienhmmt/helmdownloader/pkg/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,7 +33,7 @@ type fakeSaver struct {
 	attempts map[string]int
 }
 
-func (f *fakeSaver) Save(ctx context.Context, srcRef, destRef, destPath string) error {
+func (f *fakeSaver) Save(ctx context.Context, srcRef, destRef, destPath string, onBytes registry.BytesFunc) (string, error) {
 	f.mu.Lock()
 	f.inFlight++
 	if f.inFlight > f.peak {
@@ -52,12 +55,12 @@ func (f *fakeSaver) Save(ctx context.Context, srcRef, destRef, destPath string) 
 	f.mu.Unlock()
 
 	if f.failRefs[srcRef] {
-		return fmt.Errorf("boom: %s", srcRef)
+		return "", fmt.Errorf("boom: %s", srcRef)
 	}
 	if n, ok := f.failUntil[srcRef]; ok && attempt <= n {
-		return fmt.Errorf("transient %d: %s", attempt, srcRef)
+		return "", fmt.Errorf("transient %d: %s", attempt, srcRef)
 	}
-	return nil
+	return "sha256:fake", nil
 }
 
 func (f *fakeSaver) attemptCount(ref string) int {
@@ -80,7 +83,7 @@ func TestDownload_PreservesInputOrder(t *testing.T) {
 	saver := &fakeSaver{delay: 2 * time.Millisecond}
 	pl := newTestPipeline(saver, 4)
 
-	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil)
+	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, failures)
 	require.Len(t, entries, len(refs))
@@ -95,7 +98,7 @@ func TestDownload_PartitionsFailures(t *testing.T) {
 	saver := &fakeSaver{failRefs: map[string]bool{"docker.io/bad/two:2": true}}
 	pl := newTestPipeline(saver, 2)
 
-	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil)
+	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, entries, 2)
 	require.Len(t, failures, 1)
@@ -113,7 +116,7 @@ func TestDownload_RespectsConcurrencyLimit(t *testing.T) {
 	saver := &fakeSaver{delay: 10 * time.Millisecond}
 	pl := newTestPipeline(saver, 3)
 
-	_, _, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil)
+	_, _, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil, nil)
 	require.NoError(t, err)
 	assert.LessOrEqual(t, saver.peak, 3, "exceeded concurrency limit")
 	assert.Greater(t, saver.peak, 1, "did not run in parallel")
@@ -133,10 +136,35 @@ func TestDownload_ReportsProgressOncePerImage(t *testing.T) {
 				atomic.StoreInt32(&maxCurrent, int32(current))
 			}
 			assert.Equal(t, len(refs), total)
-		})
+		}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, int32(len(refs)), calls)
 	assert.Equal(t, int32(len(refs)), maxCurrent)
+}
+
+func TestDownload_ResumeReusesExistingTarball(t *testing.T) {
+	refs := []string{"repo/cached:1", "repo/fresh:2"}
+	saver := &fakeSaver{}
+	pl := newTestPipeline(saver, 2)
+	pl.cfg.Resume = true
+	workDir := t.TempDir()
+
+	// Pre-seed a tarball + digest sidecar for the first ref, as a prior run would.
+	imagesDir := filepath.Join(workDir, "images")
+	require.NoError(t, os.MkdirAll(imagesDir, 0o755))
+	cachedTar := filepath.Join(imagesDir, tarballName("repo/cached:1"))
+	require.NoError(t, os.WriteFile(cachedTar, []byte("cached"), 0o644))
+	require.NoError(t, os.WriteFile(cachedTar+".digest", []byte("sha256:cached"), 0o644))
+
+	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: workDir}, refs, nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, failures)
+	require.Len(t, entries, 2)
+	// The cached ref is reused (no Save call) and keeps its recorded digest.
+	assert.Equal(t, 0, saver.attemptCount("docker.io/repo/cached:1"))
+	assert.Equal(t, "sha256:cached", entries[0].Digest)
+	// The fresh ref is pulled normally.
+	assert.Equal(t, 1, saver.attemptCount("docker.io/repo/fresh:2"))
 }
 
 func TestDownload_RetriesTransientFailures(t *testing.T) {
@@ -144,7 +172,7 @@ func TestDownload_RetriesTransientFailures(t *testing.T) {
 	saver := &fakeSaver{failUntil: map[string]int{"docker.io/flaky/img:1": 2}}
 	pl := newTestPipeline(saver, 1) // retries default to 2 -> 3 attempts
 
-	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil)
+	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, failures)
 	require.Len(t, entries, 1)
@@ -157,7 +185,7 @@ func TestDownload_GivesUpAfterRetryBudget(t *testing.T) {
 	pl := newTestPipeline(saver, 1)
 	pl.cfg.Retries = 1 // 2 attempts total
 
-	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil)
+	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, entries)
 	require.Len(t, failures, 1)
@@ -172,7 +200,7 @@ func TestSaveWithRetry_StopsOnCancelledContext(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := pl.saveWithRetry(ctx, "x:1", "rgy.local/x:1", t.TempDir()+"/x.tar")
+	_, err := pl.saveWithRetry(ctx, "x:1", "rgy.local/x:1", t.TempDir()+"/x.tar", nil)
 	assert.Error(t, err)
 	// One attempt runs, then the cancelled context aborts before any backoff.
 	assert.Equal(t, 1, saver.attemptCount("x:1"))
@@ -184,6 +212,25 @@ func TestRetries_FloorsAtZero(t *testing.T) {
 	assert.Equal(t, 0, pl.retries())
 	pl.cfg.Retries = 4
 	assert.Equal(t, 4, pl.retries())
+}
+
+func TestCheckDiskSpace(t *testing.T) {
+	pl := newTestPipeline(&fakeSaver{}, 1)
+
+	// Disabled threshold always passes.
+	pl.cfg.MinFreeDiskMB = 0
+	assert.NoError(t, pl.checkDiskSpace(t.TempDir()))
+
+	// A tiny threshold is satisfied by any real temp dir.
+	pl.cfg.MinFreeDiskMB = 1
+	assert.NoError(t, pl.checkDiskSpace(t.TempDir()))
+
+	// An absurd threshold fails on every real filesystem (unix only, where
+	// freeBytes returns a real number; elsewhere it returns 0 and is skipped).
+	pl.cfg.MinFreeDiskMB = 1 << 40 // 1 PiB
+	if free, _ := freeBytes(t.TempDir()); free > 0 {
+		assert.ErrorContains(t, pl.checkDiskSpace(t.TempDir()), "insufficient disk space")
+	}
 }
 
 func TestBundle_RequiresAtLeastOneImage(t *testing.T) {

@@ -37,10 +37,11 @@ type Prepared struct {
 }
 
 // imageSaver pulls a source image and writes it to a tarball retagged as
-// destRef. *registry.Puller is the production implementation; tests substitute
-// a fake.
+// destRef, returning the resolved manifest digest. onBytes, when non-nil,
+// receives byte-level progress during the write. *registry.Puller is the
+// production implementation; tests substitute a fake.
 type imageSaver interface {
-	Save(ctx context.Context, srcRef, destRef, destPath string) error
+	Save(ctx context.Context, srcRef, destRef, destPath string, onBytes registry.BytesFunc) (string, error)
 }
 
 // defaultRetryBaseDelay is the first backoff interval; it doubles each retry.
@@ -100,16 +101,32 @@ func (p *Pipeline) Prepare(ctx context.Context, pkg artifacthub.Package, version
 		return Prepared{}, err
 	}
 	p.logger.Debugf("loaded values.yaml (%d bytes)", len(values))
-	manifests, err := p.helm.Template(ctx, pull.ChartPath)
+	var templateOpts []helm.TemplateOption
+	for _, f := range p.cfg.ValuesFiles {
+		templateOpts = append(templateOpts, helm.WithValuesFile(f))
+	}
+	for _, kv := range p.cfg.SetValues {
+		templateOpts = append(templateOpts, helm.WithSetValue(kv))
+	}
+	if len(templateOpts) > 0 {
+		p.logger.Infof("rendering with %d values file(s) and %d --set override(s) for discovery", len(p.cfg.ValuesFiles), len(p.cfg.SetValues))
+	}
+	manifests, err := p.helm.Template(ctx, pull.ChartPath, templateOpts...)
 	if err != nil {
 		return Prepared{}, err
 	}
 	p.logger.Debugf("templated manifests (%d bytes)", len(manifests))
-	// Scan both the rendered manifests and the chart's values.yaml. Values
-	// often declare images for components disabled in the default render
-	// (using the split registry/repository/tag form), which the manifests
-	// alone would miss.
-	extracted := images.Extract(manifests, values)
+	// Scan the rendered manifests, the chart's top-level values.yaml, and every
+	// subchart values.yaml. Values often declare images for components disabled
+	// in the default render (using the split registry/repository/tag form),
+	// which the manifests alone would miss; subcharts hide them one level deeper.
+	sources := []string{manifests, values}
+	if subValues, err := p.helm.SubchartValues(pull.ChartPath); err != nil {
+		p.logger.Debugf("could not scan subchart values: %v", err)
+	} else {
+		sources = append(sources, subValues...)
+	}
+	extracted := images.Extract(sources...)
 	p.logger.Infof("discovered %d images", len(extracted))
 	for _, img := range extracted {
 		p.logger.Debugf("  image: %s", img.Ref)
@@ -125,6 +142,10 @@ func (p *Pipeline) Prepare(ctx context.Context, pkg artifacthub.Package, version
 
 // ProgressFunc reports download progress as each image is processed.
 type ProgressFunc func(current, total int, ref string, err error)
+
+// ByteProgressFunc reports byte-level progress for an in-flight image pull.
+// total is best-effort and may be 0 when the registry does not report sizes.
+type ByteProgressFunc func(ref string, written, total int64)
 
 // ImageFailure records an image reference that could not be downloaded and the
 // error that prevented it.
@@ -143,12 +164,15 @@ type ImageFailure struct {
 // reported as each image finishes; current is the number completed so far,
 // which may not match the position of ref in refs because pulls finish out of
 // order.
-func (p *Pipeline) Download(ctx context.Context, prepared Prepared, refs []string, progress ProgressFunc) ([]bundle.ImageEntry, []ImageFailure, error) {
+func (p *Pipeline) Download(ctx context.Context, prepared Prepared, refs []string, progress ProgressFunc, byteProgress ByteProgressFunc) ([]bundle.ImageEntry, []ImageFailure, error) {
 	limit := p.concurrency()
 	p.logger.Infof("downloading %d images (concurrency %d)", len(refs), limit)
 	imagesDir := filepath.Join(prepared.WorkDir, "images")
 	if err := os.MkdirAll(imagesDir, 0o755); err != nil {
 		return nil, nil, fmt.Errorf("create images dir: %w", err)
+	}
+	if err := p.checkDiskSpace(imagesDir); err != nil {
+		return nil, nil, err
 	}
 
 	// Each ref writes its outcome to a fixed slot so the final results stay in
@@ -170,8 +194,33 @@ func (p *Pipeline) Download(ctx context.Context, prepared Prepared, refs []strin
 			srcRef := images.PullRef(ref)
 			destRef := images.Retag(ref, p.cfg.RegistryPrefix)
 			tarPath := filepath.Join(imagesDir, tarballName(ref))
+
+			// Resume: reuse a tarball already on disk from a prior run instead of
+			// pulling it again. The digest sidecar restores the manifest digest so
+			// the bundle stays fully pinned.
+			if p.cfg.Resume {
+				if digest, ok := reusableTarball(tarPath); ok {
+					p.logger.Infof("reusing existing tarball for %s", ref)
+					mu.Lock()
+					completed++
+					done := completed
+					results[index] = result{entry: &bundle.ImageEntry{
+						TarPath: tarPath, SourceRef: ref, DestRef: destRef, Digest: digest,
+					}}
+					mu.Unlock()
+					if progress != nil {
+						progress(done, len(refs), ref, nil)
+					}
+					return nil
+				}
+			}
+
 			p.logger.Debugf("saving image %d/%d: %s -> %s", index+1, len(refs), srcRef, destRef)
-			err := p.saveWithRetry(groupCtx, srcRef, destRef, tarPath)
+			var onBytes registry.BytesFunc
+			if byteProgress != nil {
+				onBytes = func(written, total int64) { byteProgress(ref, written, total) }
+			}
+			digest, err := p.saveWithRetry(groupCtx, srcRef, destRef, tarPath, onBytes)
 
 			mu.Lock()
 			completed++
@@ -183,7 +232,11 @@ func (p *Pipeline) Download(ctx context.Context, prepared Prepared, refs []strin
 					TarPath:   tarPath,
 					SourceRef: ref,
 					DestRef:   destRef,
+					Digest:    digest,
 				}}
+				// Record the digest beside the tarball so a later --resume run can
+				// reuse it without re-pulling and still pin the bundle.
+				writeDigestSidecar(tarPath, digest)
 			}
 			mu.Unlock()
 
@@ -213,6 +266,32 @@ func (p *Pipeline) Download(ctx context.Context, prepared Prepared, refs []strin
 	return entries, failures, nil
 }
 
+// checkDiskSpace fails fast when the filesystem backing dir has less free space
+// than the configured minimum, so a long download does not abort mid-way with a
+// cryptic "no space left" error. A 0 threshold, an unsupported platform, or a
+// stat error all skip the check rather than block progress.
+func (p *Pipeline) checkDiskSpace(dir string) error {
+	if p.cfg.MinFreeDiskMB <= 0 {
+		return nil
+	}
+	free, err := freeBytes(dir)
+	if err != nil {
+		p.logger.Debugf("disk space check skipped: %v", err)
+		return nil
+	}
+	if free == 0 {
+		return nil
+	}
+	const mib = 1 << 20
+	needed := uint64(p.cfg.MinFreeDiskMB) * mib
+	if free < needed {
+		return fmt.Errorf("insufficient disk space in %s: %d MiB free, need at least %d MiB",
+			dir, free/mib, p.cfg.MinFreeDiskMB)
+	}
+	p.logger.Debugf("disk space ok: %d MiB free in %s", free/mib, dir)
+	return nil
+}
+
 // concurrency returns the effective parallel download limit, never below 1.
 func (p *Pipeline) concurrency() int {
 	if p.cfg.Concurrency < 1 {
@@ -230,18 +309,22 @@ func (p *Pipeline) retries() int {
 }
 
 // saveWithRetry pulls srcRef, retrying transient failures with exponential
-// backoff up to the configured retry count. Backoff waits are cancellable: if
-// ctx is done, the last error is returned immediately without sleeping.
-func (p *Pipeline) saveWithRetry(ctx context.Context, srcRef, destRef, tarPath string) error {
+// backoff up to the configured retry count, and returns the resolved digest on
+// success. Backoff waits are cancellable: if ctx is done, the last error is
+// returned immediately without sleeping.
+func (p *Pipeline) saveWithRetry(ctx context.Context, srcRef, destRef, tarPath string, onBytes registry.BytesFunc) (string, error) {
 	attempts := p.retries() + 1
 	delay := p.retryBaseDelay
 	if delay <= 0 {
 		delay = defaultRetryBaseDelay
 	}
-	var err error
+	var (
+		digest string
+		err    error
+	)
 	for attempt := 1; attempt <= attempts; attempt++ {
-		if err = p.puller.Save(ctx, srcRef, destRef, tarPath); err == nil {
-			return nil
+		if digest, err = p.puller.Save(ctx, srcRef, destRef, tarPath, onBytes); err == nil {
+			return digest, nil
 		}
 		if ctx.Err() != nil || attempt == attempts {
 			break
@@ -249,12 +332,12 @@ func (p *Pipeline) saveWithRetry(ctx context.Context, srcRef, destRef, tarPath s
 		p.logger.Debugf("retry %d/%d for %s after %s: %v", attempt, attempts-1, srcRef, delay, err)
 		select {
 		case <-ctx.Done():
-			return err
+			return "", err
 		case <-time.After(delay):
 		}
 		delay *= 2
 	}
-	return err
+	return "", err
 }
 
 // Bundle assembles the downloaded image entries, the chart, and its values into
@@ -272,6 +355,7 @@ func (p *Pipeline) Bundle(prepared Prepared, pkg artifacthub.Package, version st
 		Values:       prepared.Values,
 		Images:       entries,
 		OutputDir:    p.cfg.OutputDir,
+		Compression:  p.cfg.Compression,
 	})
 	if err != nil {
 		return "", err
@@ -293,6 +377,34 @@ func (p *Pipeline) Bundle(prepared Prepared, pkg artifacthub.Package, version st
 	}
 
 	return bundlePath, nil
+}
+
+// digestSidecarPath returns the path of the file recording a tarball's digest.
+func digestSidecarPath(tarPath string) string {
+	return tarPath + ".digest"
+}
+
+// writeDigestSidecar records digest beside the tarball for later --resume runs.
+// Failure is non-fatal: the tarball is still valid, resume just won't repin it.
+func writeDigestSidecar(tarPath, digest string) {
+	if digest == "" {
+		return
+	}
+	_ = os.WriteFile(digestSidecarPath(tarPath), []byte(digest), 0o600)
+}
+
+// reusableTarball reports whether a non-empty tarball already exists at tarPath,
+// returning the recorded digest (empty when no sidecar is present).
+func reusableTarball(tarPath string) (string, bool) {
+	info, err := os.Stat(tarPath)
+	if err != nil || info.IsDir() || info.Size() == 0 {
+		return "", false
+	}
+	data, err := os.ReadFile(digestSidecarPath(tarPath))
+	if err != nil {
+		return "", true
+	}
+	return strings.TrimSpace(string(data)), true
 }
 
 var unsafeChars = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)

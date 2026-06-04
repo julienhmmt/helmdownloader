@@ -3,12 +3,16 @@ package bundle
 import (
 	"archive/tar"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -61,7 +65,7 @@ func TestCreate_WritesAllEntries(t *testing.T) {
 		Values:       "replicaCount: 1\n",
 		OutputDir:    out,
 		Images: []ImageEntry{
-			{TarPath: img1, SourceRef: "quay.io/x:1", DestRef: "rgy.local/quay.io/x:1"},
+			{TarPath: img1, SourceRef: "quay.io/x:1", DestRef: "rgy.local/quay.io/x:1", Digest: "sha256:aaa"},
 			{TarPath: img2, SourceRef: "redis:7", DestRef: "rgy.local/docker.io/library/redis:7"},
 		},
 	})
@@ -76,6 +80,84 @@ func TestCreate_WritesAllEntries(t *testing.T) {
 	assert.Contains(t, contents, "images.txt")
 	assert.Contains(t, contents, "load.sh")
 	assert.Equal(t, int64(0o755), modes["load.sh"], "load.sh must be executable")
+
+	// images.txt records source, dest, tar name, and digest (or "-" when absent).
+	manifest := contents["images.txt"]
+	assert.Contains(t, manifest, "quay.io/x:1\trgy.local/quay.io/x:1\timages/img1.tar\tsha256:aaa")
+	assert.Contains(t, manifest, "images/img2.tar\t-")
+	// A known digest is emitted as a comment above its load_and_push line.
+	assert.Contains(t, contents["load.sh"], "# sha256:aaa")
+
+	// sha256sums.txt covers chart, values, and image tars in sha256sum -c format.
+	sums := contents["sha256sums.txt"]
+	require.Contains(t, contents, "sha256sums.txt")
+	assert.Contains(t, sums, "  argo-cd-1.0.0.tgz")
+	assert.Contains(t, sums, "  values.yaml")
+	assert.Contains(t, sums, "  images/img1.tar")
+	assert.Contains(t, sums, "  images.txt")
+	// Checksums must match the actual bundled bytes.
+	for line := range strings.SplitSeq(strings.TrimSpace(sums), "\n") {
+		parts := strings.SplitN(line, "  ", 2)
+		require.Len(t, parts, 2, "malformed sum line %q", line)
+		sum := sha256.Sum256([]byte(contents[parts[1]]))
+		assert.Equal(t, hex.EncodeToString(sum[:]), parts[0], "checksum mismatch for %s", parts[1])
+	}
+	// load.sh verifies before pushing.
+	assert.Contains(t, contents["load.sh"], "sha256sums.txt")
+
+	// manifest.json provenance is present and references the images.
+	require.Contains(t, contents, "manifest.json")
+	assert.Contains(t, contents["manifest.json"], `"tool": "helmdownloader"`)
+	assert.Contains(t, contents["manifest.json"], "sha256:aaa")
+	assert.Contains(t, sums, "  manifest.json")
+}
+
+func TestCreate_ZstdProducesZstExtension(t *testing.T) {
+	work := t.TempDir()
+	out := t.TempDir()
+	chart := writeTemp(t, work, "c-1.0.0.tgz", "chart")
+	img := writeTemp(t, work, "i.tar", "tar")
+
+	path, err := Create(Spec{
+		ChartName:    "c",
+		ChartVersion: "1.0.0",
+		ChartPath:    chart,
+		OutputDir:    out,
+		Compression:  "zstd",
+		Images:       []ImageEntry{{TarPath: img, SourceRef: "redis:7", DestRef: "rgy.local/redis:7"}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(out, "c-1.0.0-bundle.tar.zst"), path)
+
+	// The archive must be readable back through the zstd decoder.
+	f, err := os.Open(path)
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, f.Close()) }()
+	zr, err := zstd.NewReader(f)
+	require.NoError(t, err)
+	defer zr.Close()
+	tr := tar.NewReader(zr)
+	var names []string
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		names = append(names, hdr.Name)
+	}
+	assert.Contains(t, names, "c-1.0.0.tgz")
+	assert.Contains(t, names, "load.sh")
+}
+
+func TestCreate_RejectsUnknownCompression(t *testing.T) {
+	_, err := Create(Spec{
+		ChartName: "c", ChartVersion: "1.0.0",
+		ChartPath: writeTemp(t, t.TempDir(), "c.tgz", "x"),
+		OutputDir: t.TempDir(), Compression: "lzma",
+		Images: []ImageEntry{{TarPath: writeTemp(t, t.TempDir(), "i.tar", "y"), DestRef: "r/x:1"}},
+	})
+	assert.ErrorContains(t, err, "unknown compression")
 }
 
 func TestCreate_LoadScriptListsImages(t *testing.T) {
@@ -109,6 +191,24 @@ func TestBuildLoadScript_QuotesAndCountsImages(t *testing.T) {
 	assert.Contains(t, script, `"$ENGINE" load -i "$DIR/$1"`)
 	assert.Contains(t, script, `"$ENGINE" push "$2"`)
 	assert.Contains(t, script, "2 image(s)")
+	// DRY_RUN preview support and idempotent skip-if-present.
+	assert.Contains(t, script, `DRY_RUN="${DRY_RUN:-}"`)
+	assert.Contains(t, script, `echo "DRY_RUN: $*"`)
+	assert.Contains(t, script, `"$ENGINE" image inspect "$2"`)
+	assert.Contains(t, script, "already present, skipping load")
+}
+
+func TestBuildLoadScript_IsValidShell(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	script := buildLoadScript([]ImageEntry{
+		{TarPath: "/work/images/a.tar", DestRef: "rgy.local/a:1", Digest: "sha256:abc"},
+		{TarPath: "/work/images/b.tar", DestRef: "rgy.local/b:2"},
+	})
+	path := writeTemp(t, t.TempDir(), "load.sh", script)
+	out, err := exec.Command("sh", "-n", path).CombinedOutput()
+	require.NoError(t, err, "sh -n failed: %s", out)
 }
 
 func TestShellQuote_EscapesSingleQuotes(t *testing.T) {

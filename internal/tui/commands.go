@@ -53,6 +53,14 @@ func downloadCmd(pl *pipeline.Pipeline, prepared pipeline.Prepared, refs []strin
 			entries, failures, err := pl.Download(ctx, prepared, refs,
 				func(current, total int, ref string, perr error) {
 					activity <- progressMsg{current: current, total: total, ref: ref, err: perr}
+				},
+				func(ref string, written, total int64) {
+					// Non-blocking: byte updates are advisory, so drop them rather
+					// than stall the puller if the UI is busy draining the channel.
+					select {
+					case activity <- byteProgressMsg{ref: ref, written: written, total: total}:
+					default:
+					}
 				})
 			if err != nil {
 				activity <- errMsg{err}

@@ -57,15 +57,18 @@ type model struct {
 	reviewImages    []images.Image
 	reviewCursor    int
 
-	activity    chan tea.Msg
-	downCurrent int
-	downTotal   int
-	downRef     string
-	downErr     error
-	entries     []bundle.ImageEntry
-	failures    []pipeline.ImageFailure
-	bundlePath  string
-	err         error
+	activity     chan tea.Msg
+	downCurrent  int
+	downTotal    int
+	downRef      string
+	downErr      error
+	downBytesRef string
+	downWritten  int64
+	downSize     int64
+	entries      []bundle.ImageEntry
+	failures     []pipeline.ImageFailure
+	bundlePath   string
+	err          error
 }
 
 // New constructs the root model from cfg.

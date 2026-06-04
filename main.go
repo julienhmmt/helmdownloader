@@ -7,14 +7,30 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/julienhmmt/helmdownloader/internal/tui"
+	"github.com/julienhmmt/helmdownloader/pkg/bundle"
 	"github.com/julienhmmt/helmdownloader/pkg/config"
 	"github.com/julienhmmt/helmdownloader/pkg/helm"
 	"github.com/julienhmmt/helmdownloader/pkg/log"
 )
 
+// stringSlice is a flag.Value that accumulates repeated flag occurrences, so
+// "-values a.yaml -values b.yaml" yields ["a.yaml", "b.yaml"].
+type stringSlice []string
+
+func (s *stringSlice) String() string { return strings.Join(*s, ",") }
+
+func (s *stringSlice) Set(v string) error {
+	*s = append(*s, v)
+	return nil
+}
+
 func main() {
+	var valuesFiles, setValues stringSlice
+	flag.Var(&valuesFiles, "values", "extra values file for image discovery (repeatable)")
+	flag.Var(&setValues, "set", "values override key=value for image discovery (repeatable)")
 	configPath := flag.String("config", config.DefaultPath(), "path to config file")
 	outputDir := flag.String("output", "", "override output directory for bundles")
 	workDir := flag.String("work-dir", "", "override work directory for intermediate files (charts, images)")
@@ -22,6 +38,9 @@ func main() {
 	retries := flag.Int("retries", -1, "override retry attempts per failed image pull (default 2)")
 	prefix := flag.String("registry-prefix", "", "override the private registry prefix")
 	platform := flag.String("platform", "", "override the image platform (e.g. linux/amd64)")
+	resume := flag.Bool("resume", false, "reuse image tarballs already present in a persistent work dir")
+	compression := flag.String("compression", "", "bundle compression: gzip (default) or zstd")
+	minFreeDiskMB := flag.Int("min-free-mb", -1, "minimum free disk space in MiB before download (0 disables)")
 	proxy := flag.String("proxy", "", "override proxy URL (e.g. http://proxy.domain.local:3128)")
 	verbose := flag.Bool("v", false, "enable verbose logging (shortcut for --log-level=debug)")
 	logLevel := flag.String("log-level", "", "set log level: silent, info, or debug (default: info)")
@@ -51,6 +70,21 @@ func main() {
 	if *platform != "" {
 		cfg.Platform = *platform
 	}
+	if len(valuesFiles) > 0 {
+		cfg.ValuesFiles = valuesFiles
+	}
+	if len(setValues) > 0 {
+		cfg.SetValues = setValues
+	}
+	if *resume {
+		cfg.Resume = true
+	}
+	if *compression != "" {
+		cfg.Compression = *compression
+	}
+	if *minFreeDiskMB >= 0 {
+		cfg.MinFreeDiskMB = *minFreeDiskMB
+	}
 	if *proxy != "" {
 		cfg.HTTPSProxy = *proxy
 	}
@@ -72,6 +106,11 @@ func main() {
 	}
 	if cfg.LogFile == "" {
 		cfg.LogFile = *logFile
+	}
+
+	if err := bundle.ValidateCompression(cfg.Compression); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
 	}
 
 	logger := createLogger(cfg)

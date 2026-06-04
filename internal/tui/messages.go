@@ -29,6 +29,13 @@ type progressMsg struct {
 	err     error
 }
 
+// byteProgressMsg reports byte-level progress for the image currently pulling.
+type byteProgressMsg struct {
+	ref     string
+	written int64
+	total   int64
+}
+
 // downloadDoneMsg carries the result of a download pass: the entries that
 // succeeded and the references that failed.
 type downloadDoneMsg struct {

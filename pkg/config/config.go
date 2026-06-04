@@ -35,6 +35,22 @@ type Config struct {
 	ArtifactHubURL string `yaml:"artifacthub_url"`
 	// SearchLimit caps the number of search results requested.
 	SearchLimit int `yaml:"search_limit"`
+	// ValuesFiles are extra values files layered onto the chart when rendering
+	// for image discovery, so images gated on non-default values are found.
+	ValuesFiles []string `yaml:"values_files"`
+	// SetValues are "key=value" overrides applied when rendering for image
+	// discovery (helm --set), complementing ValuesFiles.
+	SetValues []string `yaml:"set_values"`
+	// Resume, when true, reuses image tarballs already present in a persistent
+	// work directory instead of pulling them again. Only meaningful with a
+	// fixed work_dir; a temporary work dir is empty on each run.
+	Resume bool `yaml:"resume"`
+	// Compression selects the bundle archive codec: "gzip" (default) or "zstd"
+	// for a smaller archive.
+	Compression string `yaml:"compression"`
+	// MinFreeDiskMB is the minimum free space, in MiB, required on the work
+	// directory's filesystem before a download starts. 0 disables the check.
+	MinFreeDiskMB int `yaml:"min_free_disk_mb"`
 	// Verbose enables detailed logging to a file.
 	Verbose bool `yaml:"verbose"`
 	// LogFile is the path where verbose output is written.
@@ -47,7 +63,9 @@ type Config struct {
 func Default() Config {
 	return Config{
 		ArtifactHubURL: "https://artifacthub.io",
+		Compression:    "gzip",
 		Concurrency:    4,
+		MinFreeDiskMB:  500,
 		HTTPSProxy:     "",
 		HelmBin:        "helm",
 		LogLevel:       "info",
