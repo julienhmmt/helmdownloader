@@ -61,7 +61,7 @@ func TestCreate_WritesAllEntries(t *testing.T) {
 		Values:       "replicaCount: 1\n",
 		OutputDir:    out,
 		Images: []ImageEntry{
-			{TarPath: img1, SourceRef: "quay.io/x:1", DestRef: "rgy.local/quay.io/x:1"},
+			{TarPath: img1, SourceRef: "quay.io/x:1", DestRef: "rgy.local/quay.io/x:1", Digest: "sha256:aaa"},
 			{TarPath: img2, SourceRef: "redis:7", DestRef: "rgy.local/docker.io/library/redis:7"},
 		},
 	})
@@ -76,6 +76,13 @@ func TestCreate_WritesAllEntries(t *testing.T) {
 	assert.Contains(t, contents, "images.txt")
 	assert.Contains(t, contents, "load.sh")
 	assert.Equal(t, int64(0o755), modes["load.sh"], "load.sh must be executable")
+
+	// images.txt records source, dest, tar name, and digest (or "-" when absent).
+	manifest := contents["images.txt"]
+	assert.Contains(t, manifest, "quay.io/x:1\trgy.local/quay.io/x:1\timages/img1.tar\tsha256:aaa")
+	assert.Contains(t, manifest, "images/img2.tar\t-")
+	// A known digest is emitted as a comment above its load_and_push line.
+	assert.Contains(t, contents["load.sh"], "# sha256:aaa")
 }
 
 func TestCreate_LoadScriptListsImages(t *testing.T) {

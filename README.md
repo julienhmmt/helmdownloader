@@ -109,11 +109,11 @@ values.yaml               # default chart values
 images/
   <image1>.tar            # retagged image tarball
   <image2>.tar
-images.txt                # manifest: source_ref  dest_ref  tar_name
+images.txt                # manifest: source_ref  dest_ref  tar_name  digest
 load.sh                   # loads and pushes every image to the registry
 ```
 
-The `images.txt` manifest maps original references to their retagged counterparts, making it easy to script the import side on airgapped infrastructure.
+The `images.txt` manifest maps original references to their retagged counterparts and records the resolved manifest digest (`sha256:...`, or `-` when the registry reported none) of exactly what was bundled, making it easy to script and verify the import side on airgapped infrastructure.
 
 On the airgapped side, extract the bundle and run the generated `load.sh` to load every image into your container engine and push it to the target registry:
 

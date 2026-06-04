@@ -30,7 +30,7 @@ type fakeSaver struct {
 	attempts map[string]int
 }
 
-func (f *fakeSaver) Save(ctx context.Context, srcRef, destRef, destPath string) error {
+func (f *fakeSaver) Save(ctx context.Context, srcRef, destRef, destPath string) (string, error) {
 	f.mu.Lock()
 	f.inFlight++
 	if f.inFlight > f.peak {
@@ -52,12 +52,12 @@ func (f *fakeSaver) Save(ctx context.Context, srcRef, destRef, destPath string) 
 	f.mu.Unlock()
 
 	if f.failRefs[srcRef] {
-		return fmt.Errorf("boom: %s", srcRef)
+		return "", fmt.Errorf("boom: %s", srcRef)
 	}
 	if n, ok := f.failUntil[srcRef]; ok && attempt <= n {
-		return fmt.Errorf("transient %d: %s", attempt, srcRef)
+		return "", fmt.Errorf("transient %d: %s", attempt, srcRef)
 	}
-	return nil
+	return "sha256:fake", nil
 }
 
 func (f *fakeSaver) attemptCount(ref string) int {
@@ -172,7 +172,7 @@ func TestSaveWithRetry_StopsOnCancelledContext(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := pl.saveWithRetry(ctx, "x:1", "rgy.local/x:1", t.TempDir()+"/x.tar")
+	_, err := pl.saveWithRetry(ctx, "x:1", "rgy.local/x:1", t.TempDir()+"/x.tar")
 	assert.Error(t, err)
 	// One attempt runs, then the cancelled context aborts before any backoff.
 	assert.Equal(t, 1, saver.attemptCount("x:1"))

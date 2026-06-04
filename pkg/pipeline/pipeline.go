@@ -37,10 +37,10 @@ type Prepared struct {
 }
 
 // imageSaver pulls a source image and writes it to a tarball retagged as
-// destRef. *registry.Puller is the production implementation; tests substitute
-// a fake.
+// destRef, returning the resolved manifest digest. *registry.Puller is the
+// production implementation; tests substitute a fake.
 type imageSaver interface {
-	Save(ctx context.Context, srcRef, destRef, destPath string) error
+	Save(ctx context.Context, srcRef, destRef, destPath string) (string, error)
 }
 
 // defaultRetryBaseDelay is the first backoff interval; it doubles each retry.
@@ -171,7 +171,7 @@ func (p *Pipeline) Download(ctx context.Context, prepared Prepared, refs []strin
 			destRef := images.Retag(ref, p.cfg.RegistryPrefix)
 			tarPath := filepath.Join(imagesDir, tarballName(ref))
 			p.logger.Debugf("saving image %d/%d: %s -> %s", index+1, len(refs), srcRef, destRef)
-			err := p.saveWithRetry(groupCtx, srcRef, destRef, tarPath)
+			digest, err := p.saveWithRetry(groupCtx, srcRef, destRef, tarPath)
 
 			mu.Lock()
 			completed++
@@ -183,6 +183,7 @@ func (p *Pipeline) Download(ctx context.Context, prepared Prepared, refs []strin
 					TarPath:   tarPath,
 					SourceRef: ref,
 					DestRef:   destRef,
+					Digest:    digest,
 				}}
 			}
 			mu.Unlock()
@@ -230,18 +231,22 @@ func (p *Pipeline) retries() int {
 }
 
 // saveWithRetry pulls srcRef, retrying transient failures with exponential
-// backoff up to the configured retry count. Backoff waits are cancellable: if
-// ctx is done, the last error is returned immediately without sleeping.
-func (p *Pipeline) saveWithRetry(ctx context.Context, srcRef, destRef, tarPath string) error {
+// backoff up to the configured retry count, and returns the resolved digest on
+// success. Backoff waits are cancellable: if ctx is done, the last error is
+// returned immediately without sleeping.
+func (p *Pipeline) saveWithRetry(ctx context.Context, srcRef, destRef, tarPath string) (string, error) {
 	attempts := p.retries() + 1
 	delay := p.retryBaseDelay
 	if delay <= 0 {
 		delay = defaultRetryBaseDelay
 	}
-	var err error
+	var (
+		digest string
+		err    error
+	)
 	for attempt := 1; attempt <= attempts; attempt++ {
-		if err = p.puller.Save(ctx, srcRef, destRef, tarPath); err == nil {
-			return nil
+		if digest, err = p.puller.Save(ctx, srcRef, destRef, tarPath); err == nil {
+			return digest, nil
 		}
 		if ctx.Err() != nil || attempt == attempts {
 			break
@@ -249,12 +254,12 @@ func (p *Pipeline) saveWithRetry(ctx context.Context, srcRef, destRef, tarPath s
 		p.logger.Debugf("retry %d/%d for %s after %s: %v", attempt, attempts-1, srcRef, delay, err)
 		select {
 		case <-ctx.Done():
-			return err
+			return "", err
 		case <-time.After(delay):
 		}
 		delay *= 2
 	}
-	return err
+	return "", err
 }
 
 // Bundle assembles the downloaded image entries, the chart, and its values into

@@ -21,6 +21,9 @@ type ImageEntry struct {
 	SourceRef string
 	// DestRef is the retagged reference baked into the tarball.
 	DestRef string
+	// Digest is the resolved manifest digest of the pulled image
+	// (e.g. "sha256:..."), empty when the registry did not report one.
+	Digest string
 }
 
 // Spec describes the contents of a chart bundle.
@@ -84,7 +87,11 @@ func Create(spec Spec) (path string, err error) {
 		if err = writeFileFromDisk(tarWriter, image.TarPath, name); err != nil {
 			return "", err
 		}
-		fmt.Fprintf(&manifest, "%s\t%s\t%s\n", image.SourceRef, image.DestRef, name)
+		digest := image.Digest
+		if digest == "" {
+			digest = "-"
+		}
+		fmt.Fprintf(&manifest, "%s\t%s\t%s\t%s\n", image.SourceRef, image.DestRef, name, digest)
 	}
 	if err = writeBytes(tarWriter, "images.txt", []byte(manifest.String())); err != nil {
 		return "", err
@@ -116,6 +123,9 @@ func buildLoadScript(images []ImageEntry) string {
 	b.WriteString("}\n\n")
 	for _, image := range images {
 		name := "images/" + filepath.Base(image.TarPath)
+		if image.Digest != "" {
+			fmt.Fprintf(&b, "# %s\n", image.Digest)
+		}
 		fmt.Fprintf(&b, "load_and_push %s %s\n", shellQuote(name), shellQuote(image.DestRef))
 	}
 	fmt.Fprintf(&b, "\necho \"done: loaded and pushed %d image(s)\"\n", len(images))

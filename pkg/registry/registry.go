@@ -35,12 +35,17 @@ func NewPuller(platform, proxy string, logger *log.Logger) *Puller {
 // Save pulls srcRef for the configured platform and writes it to destPath as a
 // docker-style tarball, embedding destRef as the image's tag so a later
 // "docker load" yields the retagged image ready to push to the airgap registry.
-func (p *Puller) Save(ctx context.Context, srcRef, destRef, destPath string) error {
+//
+// It returns the resolved manifest digest of the pulled, platform-specific
+// image (e.g. "sha256:..."). The digest pins exactly what was bundled so the
+// airgapped side can verify it, even though the tarball itself is tagged rather
+// than digest-referenced.
+func (p *Puller) Save(ctx context.Context, srcRef, destRef, destPath string) (string, error) {
 	p.logger.Infof("pulling image %s for platform %s", srcRef, p.platform)
 
 	platform, err := v1.ParsePlatform(p.platform)
 	if err != nil {
-		return fmt.Errorf("parse platform %q: %w", p.platform, err)
+		return "", fmt.Errorf("parse platform %q: %w", p.platform, err)
 	}
 
 	// Build crane options with proxy support
@@ -48,7 +53,7 @@ func (p *Puller) Save(ctx context.Context, srcRef, destRef, destPath string) err
 	if p.proxy != "" {
 		proxyURL, err := url.Parse(p.proxy)
 		if err != nil {
-			return fmt.Errorf("parse proxy URL %q: %w", p.proxy, err)
+			return "", fmt.Errorf("parse proxy URL %q: %w", p.proxy, err)
 		}
 		transport := &http.Transport{
 			Proxy: http.ProxyURL(proxyURL),
@@ -61,12 +66,12 @@ func (p *Puller) Save(ctx context.Context, srcRef, destRef, destPath string) err
 	// which would cause crane.Save to timeout during layer downloads.
 	img, err := crane.Pull(srcRef, append(opts, crane.WithContext(ctx))...)
 	if err != nil {
-		return fmt.Errorf("pull %s: %w", srcRef, err)
+		return "", fmt.Errorf("pull %s: %w", srcRef, err)
 	}
 
 	tag, err := name.NewTag(destRef)
 	if err != nil {
-		return fmt.Errorf("parse dest ref %q: %w", destRef, err)
+		return "", fmt.Errorf("parse dest ref %q: %w", destRef, err)
 	}
 
 	p.logger.Debugf("saving %s to %s", destRef, destPath)
@@ -75,21 +80,29 @@ func (p *Puller) Save(ctx context.Context, srcRef, destRef, destPath string) err
 	testFile := destPath + ".tmp"
 	f, err := os.OpenFile(testFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return fmt.Errorf("cannot create file in destination directory: %w", err)
+		return "", fmt.Errorf("cannot create file in destination directory: %w", err)
 	}
 	if err := f.Close(); err != nil {
 		_ = os.Remove(testFile)
-		return fmt.Errorf("cannot close test file: %w", err)
+		return "", fmt.Errorf("cannot close test file: %w", err)
 	}
 	if err := os.Remove(testFile); err != nil {
-		return fmt.Errorf("cannot remove test file: %w", err)
+		return "", fmt.Errorf("cannot remove test file: %w", err)
 	}
 
 	// Save performs the heavy layer download and tarball write.
 	if err := crane.Save(img, tag.Name(), destPath); err != nil {
-		return fmt.Errorf("save %s: %w", destRef, err)
+		return "", fmt.Errorf("save %s: %w", destRef, err)
 	}
 
-	p.logger.Infof("saved %s", destPath)
-	return nil
+	// Resolve the digest after pull so it reflects exactly what was written.
+	digest := ""
+	if d, err := img.Digest(); err != nil {
+		p.logger.Debugf("could not resolve digest for %s: %v", srcRef, err)
+	} else {
+		digest = d.String()
+	}
+
+	p.logger.Infof("saved %s (%s)", destPath, digest)
+	return digest, nil
 }
