@@ -85,9 +85,10 @@ func (p *Puller) Save(ctx context.Context, srcRef, destRef, destPath string, onB
 		if err != nil {
 			return "", fmt.Errorf("parse proxy URL %q: %w", p.proxy, err)
 		}
-		transport := &http.Transport{
-			Proxy: http.ProxyURL(proxyURL),
-		}
+		// Clone the stdlib default transport so we keep its sane timeouts, idle
+		// connection pool, and HTTP/2 support, overriding only the proxy.
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.Proxy = http.ProxyURL(proxyURL)
 		opts = append(opts, crane.WithTransport(transport))
 	}
 

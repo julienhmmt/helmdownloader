@@ -390,7 +390,7 @@ func writeDigestSidecar(tarPath, digest string) {
 	if digest == "" {
 		return
 	}
-	_ = os.WriteFile(digestSidecarPath(tarPath), []byte(digest), 0o644)
+	_ = os.WriteFile(digestSidecarPath(tarPath), []byte(digest), 0o600)
 }
 
 // reusableTarball reports whether a non-empty tarball already exists at tarPath,

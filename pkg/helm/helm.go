@@ -116,9 +116,13 @@ func (c *Client) ShowValues(ctx context.Context, chartPath string) (string, erro
 	return c.run(ctx, "show", "values", chartPath)
 }
 
-// maxValuesFileSize caps a single values.yaml read from the archive, guarding
-// against a malicious or corrupt chart with an enormous entry.
-const maxValuesFileSize = 8 << 20 // 8 MiB
+// maxValuesFileSize caps a single values.yaml read from the archive, and
+// maxValuesTotal caps the sum across all subcharts, so a malicious or corrupt
+// chart cannot exhaust memory through one huge or many merely-large entries.
+const (
+	maxValuesFileSize = 8 << 20  // 8 MiB per file
+	maxValuesTotal    = 64 << 20 // 64 MiB across all subchart values
+)
 
 // SubchartValues reads every values.yaml bundled inside the chart archive at
 // chartPath except the top-level one (which ShowValues already returns),
@@ -138,7 +142,10 @@ func (c *Client) SubchartValues(chartPath string) ([]string, error) {
 	}
 	defer func() { _ = gz.Close() }()
 
-	var out []string
+	var (
+		out   []string
+		total int64
+	)
 	tr := tar.NewReader(gz)
 	for {
 		hdr, err := tr.Next()
@@ -163,6 +170,10 @@ func (c *Client) SubchartValues(chartPath string) ([]string, error) {
 		}
 		c.logger.Debugf("scanning subchart values: %s (%d bytes)", hdr.Name, len(data))
 		out = append(out, string(data))
+		if total += int64(len(data)); total >= maxValuesTotal {
+			c.logger.Debugf("subchart values budget (%d bytes) reached, stopping scan", maxValuesTotal)
+			break
+		}
 	}
 	return out, nil
 }

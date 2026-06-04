@@ -133,6 +133,20 @@ func Create(spec Spec) (path string, err error) {
 	if _, err = writeBytesMode(tarWriter, "load.sh", []byte(buildLoadScript(spec.Images)), 0o755); err != nil {
 		return "", err
 	}
+	// Close the writer stack explicitly, innermost first, so a flush failure
+	// (e.g. disk full while the compressor drains its buffer) surfaces as an
+	// error instead of leaving a truncated bundle reported as success. The
+	// deferred closes above remain a safety net for early-return paths and are
+	// harmless no-ops once these succeed; the deferred remove fires if err is set.
+	if err = tarWriter.Close(); err != nil {
+		return "", fmt.Errorf("finalize tar: %w", err)
+	}
+	if err = compWriter.Close(); err != nil {
+		return "", fmt.Errorf("finalize compression: %w", err)
+	}
+	if err = out.Close(); err != nil {
+		return "", fmt.Errorf("finalize bundle file: %w", err)
+	}
 	return outPath, nil
 }
 
