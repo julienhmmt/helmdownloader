@@ -115,6 +115,7 @@ images/
   <image1>.tar            # retagged image tarball
   <image2>.tar
 images.txt                # manifest: source_ref  dest_ref  tar_name  digest
+manifest.json             # provenance: tool, chart, codec, images + digests
 sha256sums.txt            # sha256 of every bundled file (sha256sum -c format)
 load.sh                   # verifies checksums, then loads and pushes every image
 ```

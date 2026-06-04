@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // ImageEntry pairs an image tarball on disk with the retagged reference it
@@ -52,6 +53,7 @@ type Spec struct {
 //	values.yaml            default chart values
 //	images/<name>.tar      one tarball per image, retagged
 //	images.txt             source -> dest reference manifest
+//	manifest.json          provenance: tool, chart, codec, images + digests
 //	sha256sums.txt         sha256 of every bundled file (sha256sum -c format)
 //	load.sh                script to load and push every image
 func Create(spec Spec) (path string, err error) {
@@ -117,6 +119,14 @@ func Create(spec Spec) (path string, err error) {
 		return "", err
 	}
 	checksums.add(sum, "images.txt")
+	prov, err := buildProvenance(spec, chartName, ext, time.Now())
+	if err != nil {
+		return "", fmt.Errorf("build provenance: %w", err)
+	}
+	if sum, err = writeBytes(tarWriter, "manifest.json", prov); err != nil {
+		return "", err
+	}
+	checksums.add(sum, "manifest.json")
 	if _, err = writeBytes(tarWriter, "sha256sums.txt", []byte(checksums.String())); err != nil {
 		return "", err
 	}
