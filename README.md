@@ -1,6 +1,6 @@
 # HelmDownloader
 
-A TUI (Terminal User Interface) application for downloading Helm charts and their container images, then bundling them into a single archive for airgapped infrastructure.
+A TUI (Terminal User Interface) application (v0.2.0) for downloading Helm charts and their container images, then bundling them into a single, integrity-checked archive for airgapped infrastructure.
 
 ## Features
 
@@ -95,6 +95,9 @@ output_dir: "archives"
 work_dir: ""
 concurrency: 4
 retries: 2
+compression: "gzip"          # gzip (.tar.gz) or zstd (.tar.zst, smaller)
+min_free_disk_mb: 500        # free space required on work dir; 0 disables
+resume: false                # reuse tarballs already in a persistent work_dir
 https_proxy: "http://proxy.domain.local:3128"
 helm_bin: "helm"
 artifacthub_url: "https://artifacthub.io"

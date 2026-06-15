@@ -32,10 +32,12 @@ Plutôt que d'écrire un énième script bash, j'ai utilisé [Claude Code](https
 Le gain est net :
 
 - **Un seul outil, toutes les charts.** Plus de script par application. On cherche n'importe quelle chart, on la sélectionne, et le même pipeline s'occupe du reste.
-- **Découverte automatique des images.** Fini la liste codée en dur. L'outil fait un `helm template`, parcourt récursivement tous les manifestes rendus, et extrait toutes les références d'images — y compris la forme éclatée `registry` / `repository` / `tag` / `digest` qu'utilisent beaucoup de charts.
-- **Plus rapide pour bundler.** Le pull des images est *daemonless* via [go-containerregistry](https://github.com/google/go-containerregistry) : **pas besoin de Docker**. Les images se téléchargent en parallèle.
+- **Découverte automatique des images.** Fini la liste codée en dur. L'outil fait un `helm template`, parcourt récursivement tous les manifestes rendus, le `values.yaml` racine, et chaque `charts/*/values.yaml` de subchart, et extrait toutes les références d'images — y compris la forme éclatée `registry` / `repository` / `tag` / `digest` qu'utilisent beaucoup de charts.
+- **Plus rapide pour bundler.** Le pull des images est *daemonless* via [go-containerregistry](https://github.com/google/go-containerregistry) : **pas besoin de Docker**. Les images se téléchargent en parallèle, avec retry et backoff exponentiel. Une image en échec n'interrompt pas le lot — on voit l'ensemble des échecs d'un coup.
+- **Bundles vérifiables.** Chaque fichier du bundle est sha256'é dans `sha256sums.txt`, les digests de manifeste sont épinglés dans `images.txt` et `manifest.json`, et le `load.sh` généré vérifie les checksums avant de pousser.
+- **Archives plus légères.** Au choix, compression `gzip` (`.tar.gz`) ou `zstd` (`.tar.zst`). Un contrôle d'espace disque et un flag `-resume` (réutilise les tarballs déjà tirés) rendent les gros lots sûrs à relancer.
 - **Distribuable.** Un binaire Go statique, compilé pour Linux, macOS et Windows, en amd64 et arm64. On le pose, il tourne.
-- **Sans dépendance.** Pas besoin d'avoir `docker` ou `podman` sur la machine de récolte, *HelmDownloader* utilise une librairie Golang interne.
+- **Sans dépendance.** Pas besoin d'avoir `docker` ou `podman` sur la machine de récolte — *HelmDownloader* utilise une librairie Golang interne.
 
 Là où chaque nouvelle application demandait un nouveau script bash, on a maintenant un seul outil qui les couvre toutes — et qui s'adapte automatiquement aux changements de version.
 
@@ -50,7 +52,7 @@ HelmDownloader est une application **TUI** (interface en terminal) qui :
 5. **Télécharge** les images (sans Docker) et les retague pour votre registry privé
 6. **Assemble** le tout dans **une seule archive compressée** prête à traverser l'airgap
 
-Le bundle produit contient la chart, ses `values.yaml`, chaque image sous forme de tarball, un manifeste `images.txt` qui mappe les références d'origine vers leurs versions retaguées, et un script `load.sh` qui recharge et pousse tout vers votre registry de l'autre côté.
+Le bundle produit contient la chart, ses `values.yaml`, chaque image sous forme de tarball, un manifeste `images.txt` qui mappe les références d'origine vers leurs versions retaguées (avec digests épinglés), un fichier de provenance `manifest.json`, une liste de checksums `sha256sums.txt`, et un script `load.sh` qui vérifie les checksums, puis recharge et pousse tout vers votre registry de l'autre côté. `load.sh` est idempotent (saute les images déjà présentes) et respecte `DRY_RUN=1`.
 
 C'est le cas d'usage **airgap** par excellence : un seul fichier à transférer, une seule commande à lancer à l'arrivée.
 
@@ -105,11 +107,12 @@ Transférez le bundle sur la plateforme déconnectée, puis :
 
 ```bash
 tar xzf argo-cd-1.0.0-bundle.tar.gz
-./load.sh                 # utilise docker par défaut
+./load.sh                 # vérifie les checksums, puis charge + pousse (docker par défaut)
 ENGINE=podman ./load.sh   # sinon cette commande pour utiliser podman
+DRY_RUN=1 ./load.sh       # affiche les commandes load/push sans les exécuter
 ```
 
-Le script recharge chaque image et la pousse vers votre registry. La chart, elle, est prête à être déployée avec `helm install`.
+Le script vérifie `sha256sums.txt`, recharge chaque image et la pousse vers votre registry. La chart, elle, est prête à être déployée avec `helm install`.
 
 ## Configuration persistante
 
@@ -121,6 +124,8 @@ platform: "linux/amd64"
 output_dir: "archives"
 concurrency: 4
 retries: 2
+compression: "gzip"          # ou zstd pour des archives plus légères
+min_free_disk_mb: 500        # contrôle d'espace disque ; 0 désactive
 https_proxy: "http://proxy.domain.local:3128"
 ```
 
@@ -137,6 +142,9 @@ output_dir: "archives"
 work_dir: ""                    # Optionnel : répertoire de travail pour les fichiers intermédiaires (charts, images). Si vide, un répertoire temporaire est utilisé
 concurrency: 4                   # Nombre maximum de téléchargements d'images en parallèle
 retries: 2                       # Tentatives de retry par échec de pull d'image (backoff exponentiel)
+compression: "gzip"              # Codec du bundle : gzip (.tar.gz) ou zstd (.tar.zst, plus léger)
+min_free_disk_mb: 500            # Espace disque libre min (MiB) sur le work dir avant download ; 0 désactive
+resume: false                    # Réutilise les tarballs déjà présents dans un work_dir persistant
 https_proxy: "http://proxy.domain.local:3128"
 helm_bin: "helm"                 # Optionnel : nom ou chemin de l'exécutable helm
 artifacthub_url: "https://artifacthub.io"  # Optionnel : URL de base de l'API ArtifactHub
@@ -156,6 +164,11 @@ helmdownloader \
   -work-dir "./workdir" \
   -concurrency 4 \
   -retries 2 \
+  -compression "zstd" \
+  -min-free-mb 500 \
+  -resume \
+  -values "extra-values.yaml" \
+  -set "monitoring.enabled=true" \
   -proxy "http://proxy.domain.local:3128" \
   -v \
   -log-level "debug" \
@@ -169,6 +182,11 @@ helmdownloader \
 | `-work-dir` | Répertoire de travail pour les fichiers intermédiaires (charts, images). Si vide, un répertoire temporaire est utilisé |
 | `-concurrency` | Nombre maximum d'images téléchargées en parallèle (défaut : 4) |
 | `-retries` | Tentatives de retry par échec de pull d'image (défaut : 2) |
+| `-compression` | Codec du bundle : `gzip` (`.tar.gz`) ou `zstd` (`.tar.zst`, plus léger) |
+| `-min-free-mb` | Espace disque libre minimum (MiB) sur le work dir avant download ; `0` désactive |
+| `-resume` | Réutilise les tarballs d'images déjà présents dans un work dir persistant (avec `-work-dir`) |
+| `-values` | Fichier de values supplémentaire appliqué à la chart pour la découverte d'images (répétable) |
+| `-set` | Override de values `key=value` pour la découverte d'images, ex : `monitoring.enabled=true` (répétable) |
 | `-proxy` | URL du proxy pour les requêtes réseau (ex: `http://proxy.domain.local:3128`) |
 | `-v` | Active la journalisation verbose (raccourci pour `--log-level=debug`) |
 | `-log-level` | Définit le niveau de log : `silent`, `info`, ou `debug` (défaut : `info`) |
@@ -188,7 +206,7 @@ Si vous opérez Kubernetes en environnement airgap, vous avez forcément vos pro
 - **un seul outil** au lieu d'un par application ;
 - **découverte automatique** des images au lieu d'une liste à maintenir à la main ;
 - **sans Docker**, en parallèle, donc plus rapide ;
-- **un bundle prêt à l'emploi** avec son script de rechargement.
+- **un bundle vérifiable** (digests épinglés + checksums sha256) avec son script de rechargement.
 
 C'est l'outil que j'aurais aimé avoir le jour où j'ai commencé à empiler les scripts. Le code est sous licence AGPL v3, ouvert aux contributions.
 
