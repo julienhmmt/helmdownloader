@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
 	"github.com/julienhmmt/helmdownloader/pkg/bundle"
 	"github.com/julienhmmt/helmdownloader/pkg/config"
@@ -75,6 +76,7 @@ type model struct {
 func New(cfg config.Config, logger *log.Logger) model {
 	spin := spinner.New()
 	spin.Spinner = spinner.Dot
+	spin.Style = lipgloss.NewStyle().Foreground(colorAccent)
 
 	prog := progress.New(
 		progress.WithDefaultGradient(),
@@ -90,13 +92,17 @@ func New(cfg config.Config, logger *log.Logger) model {
 	add.Placeholder = "registry/repo:tag"
 	add.CharLimit = 200
 
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(colorAccent).Padding(0, 1)
+
 	resultsList := list.New(nil, list.NewDefaultDelegate(), 0, 0)
 	resultsList.Title = "Charts"
 	resultsList.SetShowHelp(false)
+	resultsList.Styles.Title = titleStyle
 
 	versionsList := list.New(nil, list.NewDefaultDelegate(), 0, 0)
 	versionsList.Title = "Versions"
 	versionsList.SetShowHelp(false)
+	versionsList.Styles.Title = titleStyle
 
 	return model{
 		cfg:      cfg,
