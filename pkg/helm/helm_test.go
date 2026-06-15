@@ -118,3 +118,23 @@ func TestSubchartValues_MissingArchiveErrors(t *testing.T) {
 	_, err := New("helm", "", log.Discard()).SubchartValues("/no/such/chart.tgz")
 	assert.ErrorContains(t, err, "open chart archive")
 }
+
+func TestIsolatedHelmEnv_PointsAtPrivateHome(t *testing.T) {
+	home := t.TempDir()
+	env, err := isolatedHelmEnv(home)
+	require.NoError(t, err)
+
+	wantCache := filepath.Join(home, ".helm", "repository")
+	wantConfig := filepath.Join(home, ".helm", "repositories.yaml")
+	assert.Contains(t, env, "HELM_REPOSITORY_CACHE="+wantCache)
+	assert.Contains(t, env, "HELM_REPOSITORY_CONFIG="+wantConfig)
+
+	// The cache directory is created so helm can write the fetched index; the
+	// config file is intentionally absent (helm reads a missing file as empty),
+	// which is what keeps the user's global repos out of the pull.
+	info, err := os.Stat(wantCache)
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+	_, err = os.Stat(wantConfig)
+	assert.True(t, os.IsNotExist(err), "repositories.yaml must not be created")
+}

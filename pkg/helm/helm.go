@@ -67,8 +67,18 @@ func (c *Client) Pull(ctx context.Context, name, repoURL, version, destDir strin
 		args = append(args, name, "--repo", repoURL)
 	}
 	args = append(args, "--version", version, "--destination", destDir)
+	// Isolate helm's repository config and cache inside destDir so the pull never
+	// loads the user's global repositories.yaml. A stale or unreachable entry
+	// there — e.g. a repo removed without its cached index — otherwise breaks an
+	// unrelated `helm pull --repo` with "no cached repo found. (try 'helm repo
+	// update')". Scoping the helm home to destDir also ties its cleanup to the
+	// work dir's existing lifecycle, so no temp dir leaks.
+	isolatedEnv, err := isolatedHelmEnv(destDir)
+	if err != nil {
+		return PullResult{}, err
+	}
 	c.logger.Debugf("helm pull: %s %s", c.bin, strings.Join(args, " "))
-	if _, err := c.run(ctx, args...); err != nil {
+	if _, err := c.runEnv(ctx, isolatedEnv, args...); err != nil {
 		return PullResult{}, err
 	}
 	chartPath, err := findChart(destDir, name, version)
@@ -180,11 +190,18 @@ func (c *Client) SubchartValues(chartPath string) ([]string, error) {
 
 // run executes helm with args and returns stdout, wrapping failures with stderr.
 func (c *Client) run(ctx context.Context, args ...string) (string, error) {
+	return c.runEnv(ctx, nil, args...)
+}
+
+// runEnv is run with extra environment variables appended after the inherited
+// environment, so later entries win over anything os.Environ already set.
+func (c *Client) runEnv(ctx context.Context, extraEnv []string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, c.bin, args...)
 	cmd.Env = os.Environ()
 	if c.proxy != "" {
 		cmd.Env = append(cmd.Env, "HTTPS_PROXY="+c.proxy, "HTTP_PROXY="+c.proxy)
 	}
+	cmd.Env = append(cmd.Env, extraEnv...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -192,6 +209,24 @@ func (c *Client) run(ctx context.Context, args ...string) (string, error) {
 		return "", fmt.Errorf("helm %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.String(), nil
+}
+
+// isolatedHelmEnv returns environment overrides that point helm's repository
+// config and cache at a private directory under home, so a chart pull is
+// hermetic: it never reads the user's global repositories.yaml or its cached
+// indexes. The repositories.yaml path need not exist — helm treats a missing
+// file as an empty repo list — and helm fetches the target repo's index fresh,
+// which `helm pull --repo` does anyway, so isolation adds no extra network.
+func isolatedHelmEnv(home string) ([]string, error) {
+	helmHome := filepath.Join(home, ".helm")
+	repoCache := filepath.Join(helmHome, "repository")
+	if err := os.MkdirAll(repoCache, 0o755); err != nil {
+		return nil, fmt.Errorf("create isolated helm repository cache: %w", err)
+	}
+	return []string{
+		"HELM_REPOSITORY_CONFIG=" + filepath.Join(helmHome, "repositories.yaml"),
+		"HELM_REPOSITORY_CACHE=" + repoCache,
+	}, nil
 }
 
 // findChart locates the pulled archive, preferring the conventional

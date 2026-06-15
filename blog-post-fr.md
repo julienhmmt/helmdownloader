@@ -38,6 +38,7 @@ Le gain est net :
 - **Archives plus légères.** Au choix, compression `gzip` (`.tar.gz`) ou `zstd` (`.tar.zst`). Un contrôle d'espace disque et un flag `-resume` (réutilise les tarballs déjà tirés) rendent les gros lots sûrs à relancer.
 - **Distribuable.** Un binaire Go statique, compilé pour Linux, macOS et Windows, en amd64 et arm64. On le pose, il tourne.
 - **Sans dépendance.** Pas besoin d'avoir `docker` ou `podman` sur la machine de récolte — *HelmDownloader* utilise une librairie Golang interne.
+- **Pulls hermétiques.** Chaque `helm pull` s'exécute avec une config et un cache de dépôts privés, isolés dans le répertoire de travail : l'outil ignore totalement vos dépôts helm globaux. Un dépôt local périmé ou supprimé ne peut plus casser un pull avec `Error: no cached repo found. (try 'helm repo update')` — inutile de lancer `helm repo update` au préalable.
 
 Là où chaque nouvelle application demandait un nouveau script bash, on a maintenant un seul outil qui les couvre toutes — et qui s'adapte automatiquement aux changements de version.
 

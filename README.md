@@ -15,6 +15,8 @@ A TUI (Terminal User Interface) application (v0.2.0) for downloading Helm charts
 
 [Helm](https://helm.sh/docs/intro/install/) must be installed and on your `PATH` (or set `helm_bin` in the config). It is used to pull and render charts; image pulling itself is daemonless and needs no Docker. helmdownloader checks for a working helm at startup and exits with a clear message if it is missing.
 
+Chart pulls are **hermetic**: each `helm pull` runs against a private repository config and cache scoped to the work directory, so the tool never reads your global `~/.config/helm/repositories.yaml`. A stale or removed entry there cannot break an unrelated pull with `Error: no cached repo found. (try 'helm repo update')` — and you don't need to run `helm repo update` beforehand.
+
 ## Installation
 
 ```bash
