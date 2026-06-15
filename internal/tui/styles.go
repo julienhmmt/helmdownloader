@@ -1,14 +1,17 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/compat"
+)
 
 // Palette — adaptive colors so the UI reads on both light and dark terminals.
 var (
-	colorAccent = lipgloss.AdaptiveColor{Light: "63", Dark: "63"}
-	colorGood   = lipgloss.AdaptiveColor{Light: "28", Dark: "42"}
-	colorBad    = lipgloss.AdaptiveColor{Light: "160", Dark: "196"}
-	colorMuted  = lipgloss.AdaptiveColor{Light: "245", Dark: "241"}
-	colorBorder = lipgloss.AdaptiveColor{Light: "250", Dark: "238"}
+	colorAccent = compat.AdaptiveColor{Light: lipgloss.Color("63"), Dark: lipgloss.Color("63")}
+	colorGood   = compat.AdaptiveColor{Light: lipgloss.Color("28"), Dark: lipgloss.Color("42")}
+	colorBad    = compat.AdaptiveColor{Light: lipgloss.Color("160"), Dark: lipgloss.Color("196")}
+	colorMuted  = compat.AdaptiveColor{Light: lipgloss.Color("245"), Dark: lipgloss.Color("241")}
+	colorBorder = compat.AdaptiveColor{Light: lipgloss.Color("250"), Dark: lipgloss.Color("238")}
 )
 
 // styleSet groups the lipgloss styles used across the TUI views.

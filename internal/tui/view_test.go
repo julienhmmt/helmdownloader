@@ -42,7 +42,7 @@ func TestViewRendersEveryScreen(t *testing.T) {
 	for _, s := range states {
 		m := base
 		m.state = s
-		out := m.View()
+		out := m.render()
 		assert.NotEmpty(t, strings.TrimSpace(out), "state %d rendered empty", s)
 	}
 }
@@ -56,7 +56,7 @@ func TestViewReviewShowsSelectionAndCursor(t *testing.T) {
 		{Ref: "quay.io/argoproj/argocd:v2.9.3", Selected: true},
 	}
 
-	out := m.View()
+	out := m.render()
 	assert.Contains(t, out, "argo-cd")
 	assert.Contains(t, out, "1 selected of 1")
 	assert.Contains(t, out, "quay.io/argoproj/argocd:v2.9.3")

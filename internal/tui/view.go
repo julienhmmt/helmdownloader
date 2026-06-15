@@ -4,11 +4,19 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
-// View renders the current screen.
-func (m model) View() string {
+// View renders the current screen, declaring the alt screen via the v2 tea.View.
+func (m model) View() tea.View {
+	v := tea.NewView(m.render())
+	v.AltScreen = true
+	return v
+}
+
+// render returns the content string for the active screen.
+func (m model) render() string {
 	switch m.state {
 	case stateSearch:
 		return m.viewSearch()

@@ -1,7 +1,8 @@
 package tui
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
 	"github.com/julienhmmt/helmdownloader/pkg/images"
 	"github.com/julienhmmt/helmdownloader/pkg/pipeline"
 )
@@ -13,9 +14,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = typed.Width, typed.Height
 		m.results.SetSize(typed.Width-2, typed.Height-6)
 		m.versions.SetSize(typed.Width-2, typed.Height-6)
-		m.progress.Width = max(0, min(typed.Width-4, 60))
+		m.progress.SetWidth(max(0, min(typed.Width-4, 60)))
 		return m, nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.handleKey(typed)
 	case searchResultMsg:
 		m.state = stateResults
@@ -33,12 +34,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case progressMsg:
 		m.downCurrent, m.downTotal, m.downRef = typed.current, typed.total, typed.ref
-		m.downErr = typed.err
 		// A finished image clears any stale byte counter for the next one.
-		m.downBytesRef, m.downWritten, m.downSize = "", 0, 0
+		m.downWritten, m.downSize = 0, 0
 		return m, waitForActivity(m.activity)
 	case byteProgressMsg:
-		m.downBytesRef, m.downWritten, m.downSize = typed.ref, typed.written, typed.total
+		m.downWritten, m.downSize = typed.written, typed.total
 		return m, waitForActivity(m.activity)
 	case downloadDoneMsg:
 		m.entries = append(m.entries, typed.entries...)
@@ -84,8 +84,8 @@ func (m model) updateComponents(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // handleKey routes key presses based on the active screen.
-func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if msg.Type == tea.KeyCtrlC {
+func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if msg.String() == "ctrl+c" {
 		return m, tea.Batch(cleanupCmd(m.prepared.WorkDir), tea.Quit)
 	}
 	switch m.state {
@@ -108,24 +108,24 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleSearchKey processes input on the search screen.
-func (m model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyEnter:
+func (m model) handleSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
 		query := m.search.Value()
 		if query == "" {
 			return m, nil
 		}
 		m.state = stateSearching
 		return m, tea.Batch(m.spinner.Tick, searchCmd(m.client, query, m.cfg.SearchLimit))
-	case tea.KeyEsc:
+	case "esc":
 		return m, tea.Batch(cleanupCmd(m.prepared.WorkDir), tea.Quit)
 	}
 	return m.updateComponents(msg)
 }
 
 // handleResultsKey processes selection on the results screen.
-func (m model) handleResultsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.results.FilterState() == 1 { // filtering: let the list consume keys
+func (m model) handleResultsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.results.FilterState() == list.Filtering { // let the list consume keys while filtering
 		return m.updateComponents(msg)
 	}
 	switch msg.String() {
@@ -145,8 +145,8 @@ func (m model) handleResultsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleVersionsKey processes selection on the versions screen.
-func (m model) handleVersionsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.versions.FilterState() == 1 {
+func (m model) handleVersionsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.versions.FilterState() == list.Filtering {
 		return m.updateComponents(msg)
 	}
 	switch msg.String() {
@@ -170,7 +170,7 @@ func (m model) handleVersionsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleReviewKey processes the image review checklist.
-func (m model) handleReviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		m.state = stateVersions
@@ -183,7 +183,7 @@ func (m model) handleReviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.reviewCursor < len(m.reviewImages)-1 {
 			m.reviewCursor++
 		}
-	case " ":
+	case "space":
 		if len(m.reviewImages) > 0 {
 			m.reviewImages[m.reviewCursor].Selected = !m.reviewImages[m.reviewCursor].Selected
 		}
@@ -205,7 +205,7 @@ func (m model) handleReviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.prepared.Images = m.reviewImages
 		refs := selectedRefs(m.reviewImages)
-		m.entries, m.failures, m.downErr = nil, nil, nil
+		m.entries, m.failures = nil, nil
 		m.state = stateDownloading
 		m.downCurrent, m.downTotal = 0, len(refs)
 		return m, tea.Batch(m.spinner.Tick, downloadCmd(m.pipeline, m.prepared, refs, m.activity))
@@ -215,11 +215,11 @@ func (m model) handleReviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // handleDownloadReviewKey processes the post-download failures screen, where the
 // user can retry failed images, continue with what downloaded, or abort.
-func (m model) handleDownloadReviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m model) handleDownloadReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "r":
 		refs := failureRefs(m.failures)
-		m.failures, m.downErr = nil, nil
+		m.failures = nil
 		m.state = stateDownloading
 		m.downCurrent, m.downTotal = 0, len(refs)
 		return m, tea.Batch(m.spinner.Tick, downloadCmd(m.pipeline, m.prepared, refs, m.activity))
@@ -237,9 +237,9 @@ func (m model) handleDownloadReviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleAddImageKey processes the add-custom-image input.
-func (m model) handleAddImageKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyEnter:
+func (m model) handleAddImageKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
 		ref := m.addInput.Value()
 		if ref != "" {
 			m.reviewImages = append(m.reviewImages, images.Image{Ref: ref, Selected: true})
@@ -247,7 +247,7 @@ func (m model) handleAddImageKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.addInput.Blur()
 		m.state = stateReview
 		return m, nil
-	case tea.KeyEsc:
+	case "esc":
 		m.addInput.Blur()
 		m.state = stateReview
 		return m, nil
@@ -256,7 +256,7 @@ func (m model) handleAddImageKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleEndKey processes the terminal done/error screens.
-func (m model) handleEndKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m model) handleEndKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "esc", "enter":
 		return m, tea.Batch(cleanupCmd(m.prepared.WorkDir), tea.Quit)
@@ -273,7 +273,7 @@ func (m model) reset() (model, tea.Cmd) {
 	fresh.width, fresh.height = m.width, m.height
 	fresh.results.SetSize(m.width-2, m.height-6)
 	fresh.versions.SetSize(m.width-2, m.height-6)
-	fresh.progress.Width = m.progress.Width
+	fresh.progress.SetWidth(m.progress.Width())
 	return fresh, cleanupCmd(m.prepared.WorkDir)
 }
 

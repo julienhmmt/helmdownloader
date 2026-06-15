@@ -1,6 +1,6 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import "charm.land/lipgloss/v2"
 
 // maxFrameWidth caps the bordered panel so content stays readable on wide
 // terminals; on narrow ones the panel shrinks to fit.

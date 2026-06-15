@@ -2,12 +2,12 @@
 package tui
 
 import (
-	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/progress"
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/progress"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
 	"github.com/julienhmmt/helmdownloader/pkg/bundle"
 	"github.com/julienhmmt/helmdownloader/pkg/config"
@@ -58,18 +58,16 @@ type model struct {
 	reviewImages    []images.Image
 	reviewCursor    int
 
-	activity     chan tea.Msg
-	downCurrent  int
-	downTotal    int
-	downRef      string
-	downErr      error
-	downBytesRef string
-	downWritten  int64
-	downSize     int64
-	entries      []bundle.ImageEntry
-	failures     []pipeline.ImageFailure
-	bundlePath   string
-	err          error
+	activity    chan tea.Msg
+	downCurrent int
+	downTotal   int
+	downRef     string
+	downWritten int64
+	downSize    int64
+	entries     []bundle.ImageEntry
+	failures    []pipeline.ImageFailure
+	bundlePath  string
+	err         error
 }
 
 // New constructs the root model from cfg.
@@ -79,7 +77,7 @@ func New(cfg config.Config, logger *log.Logger) model {
 	spin.Style = lipgloss.NewStyle().Foreground(colorAccent)
 
 	prog := progress.New(
-		progress.WithDefaultGradient(),
+		progress.WithDefaultBlend(),
 		progress.WithWidth(60),
 	)
 
