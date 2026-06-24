@@ -78,6 +78,19 @@ func newTestPipeline(saver imageSaver, concurrency int) *Pipeline {
 	}
 }
 
+// newForTest constructs a Pipeline with injectable helm and puller fakes, so
+// Prepare and Download can be tested without a real helm binary, network, or
+// registry. Tests shrink retryBaseDelay via the field directly when needed.
+func newForTest(cfg config.Config, logger *log.Logger, h helmClient, p imageSaver) *Pipeline {
+	return &Pipeline{
+		cfg:            cfg,
+		helm:           h,
+		puller:         p,
+		logger:         logger,
+		retryBaseDelay: defaultRetryBaseDelay,
+	}
+}
+
 func TestDownload_PreservesInputOrder(t *testing.T) {
 	refs := []string{"a/x:1", "b/y:2", "c/z:3", "d/w:4"}
 	saver := &fakeSaver{delay: 2 * time.Millisecond}

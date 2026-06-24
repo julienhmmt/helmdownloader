@@ -1,0 +1,34 @@
+# golangci-lint v2 configuration for helmdownloader.
+# Run locally with: task go-lint  (or: golangci-lint run ./...)
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errorlint
+    - govet
+    - ineffassign
+    - misspell
+    - revive
+    - staticcheck
+    - unused
+  settings:
+    errorlint:
+      # Flag fmt.Errorf without %w when wrapping an error.
+      errorf: true
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/julienhmmt/helmdownloader
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

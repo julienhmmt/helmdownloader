@@ -32,8 +32,13 @@ type Prepared struct {
 	Values string
 	// Images is the auto-discovered set of image references.
 	Images []images.Image
-	// WorkDir is the temporary directory holding intermediate artifacts.
+	// WorkDir is the directory holding intermediate artifacts.
 	WorkDir string
+	// TempWorkDir reports whether WorkDir was created as a temporary directory
+	// by Prepare and should be removed on cleanup; it is false when WorkDir is
+	// the user-configured cfg.WorkDir, which must be preserved across runs for
+	// -resume.
+	TempWorkDir bool
 }
 
 // imageSaver pulls a source image and writes it to a tarball retagged as
@@ -44,6 +49,16 @@ type imageSaver interface {
 	Save(ctx context.Context, srcRef, destRef, destPath string, onBytes registry.BytesFunc) (string, error)
 }
 
+// helmClient is the subset of *helm.Client that Pipeline uses. The concrete
+// client satisfies it structurally; tests substitute a fake to drive Prepare
+// without a real helm binary or network.
+type helmClient interface {
+	Pull(ctx context.Context, name, repoURL, version, destDir string, oci bool) (helm.PullResult, error)
+	ShowValues(ctx context.Context, chartPath string) (string, error)
+	Template(ctx context.Context, chartPath string, opts ...helm.TemplateOption) (string, error)
+	SubchartValues(chartPath string) ([]string, error)
+}
+
 // defaultRetryBaseDelay is the first backoff interval; it doubles each retry.
 const defaultRetryBaseDelay = 1 * time.Second
 
@@ -51,7 +66,7 @@ const defaultRetryBaseDelay = 1 * time.Second
 // helm client and image puller.
 type Pipeline struct {
 	cfg    config.Config
-	helm   *helm.Client
+	helm   helmClient
 	puller imageSaver
 	logger *log.Logger
 	// retryBaseDelay is the first backoff interval between pull attempts.
@@ -74,6 +89,7 @@ func New(cfg config.Config, logger *log.Logger) *Pipeline {
 func (p *Pipeline) Prepare(ctx context.Context, pkg artifacthub.Package, version string) (prep Prepared, err error) {
 	p.logger.Infof("preparing chart %s version %s from %s", pkg.Name, version, pkg.RepoURL)
 	var workDir string
+	var tempDir bool
 	if p.cfg.WorkDir != "" {
 		workDir = p.cfg.WorkDir
 		if err := os.MkdirAll(workDir, 0o755); err != nil {
@@ -84,6 +100,7 @@ func (p *Pipeline) Prepare(ctx context.Context, pkg artifacthub.Package, version
 		if err != nil {
 			return Prepared{}, fmt.Errorf("create temp work dir: %w", err)
 		}
+		tempDir = true
 		defer func() {
 			if err != nil {
 				_ = os.RemoveAll(workDir)
@@ -132,10 +149,11 @@ func (p *Pipeline) Prepare(ctx context.Context, pkg artifacthub.Package, version
 		p.logger.Debugf("  image: %s", img.Ref)
 	}
 	prep = Prepared{
-		ChartPath: pull.ChartPath,
-		Values:    values,
-		Images:    extracted,
-		WorkDir:   workDir,
+		ChartPath:   pull.ChartPath,
+		Values:      values,
+		Images:      extracted,
+		WorkDir:     workDir,
+		TempWorkDir: tempDir,
 	}
 	return prep, nil
 }
@@ -366,13 +384,19 @@ func (p *Pipeline) Bundle(prepared Prepared, pkg artifacthub.Package, version st
 	// For temp work dirs, the entire dir is cleaned up by the caller.
 	// For persistent work dirs, we remove the images subdirectory and the
 	// pulled chart archive, both of which are already embedded in the bundle.
-	if p.cfg.WorkDir != "" {
+	if prepared.WorkDir != "" && !prepared.TempWorkDir {
 		imagesDir := filepath.Join(prepared.WorkDir, "images")
 		if err := os.RemoveAll(imagesDir); err != nil {
 			p.logger.Debugf("failed to clean up images directory: %v", err)
 		}
 		if err := os.Remove(prepared.ChartPath); err != nil && !os.IsNotExist(err) {
 			p.logger.Debugf("failed to clean up chart archive %s: %v", prepared.ChartPath, err)
+		}
+		// The isolated helm repo cache (created by isolatedHelmEnv during Pull)
+		// is per-bundle and regenerable; remove it so persistent work dirs don't
+		// accumulate stale repo indexes across runs.
+		if err := os.RemoveAll(filepath.Join(prepared.WorkDir, ".helm")); err != nil {
+			p.logger.Debugf("failed to clean up isolated helm cache: %v", err)
 		}
 	}
 

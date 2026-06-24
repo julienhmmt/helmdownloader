@@ -10,9 +10,31 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
+
+// unsafeNameChars matches characters disallowed in a safe bundle filename.
+// Note it intentionally KEEPS "." so version strings like "1.0.0" stay
+// readable in the filename; traversal ("..") is neutralized separately in
+// safeBundleName, because keeping "." means the regex alone would let ".."
+// survive.
+var unsafeNameChars = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
+
+// safeBundleName makes a chart name or version safe as a single filename
+// component: it first collapses any ".." traversal sequence to "_", then
+// replaces path separators and other unsafe characters with "_". Both steps
+// are required — the regex keeps "." (for readable version numbers), so the
+// explicit ".." pass is what prevents escaping OutputDir via filepath.Join.
+func safeBundleName(s string) string {
+	s = strings.ReplaceAll(s, "..", "_")
+	s = strings.Trim(unsafeNameChars.ReplaceAllString(s, "_"), "_")
+	if s == "" {
+		return "unknown"
+	}
+	return s
+}
 
 // ImageEntry pairs an image tarball on disk with the retagged reference it
 // contains.
@@ -64,7 +86,8 @@ func Create(spec Spec) (path string, err error) {
 	if err != nil {
 		return "", err
 	}
-	outName := fmt.Sprintf("%s-%s-bundle.tar.%s", spec.ChartName, spec.ChartVersion, ext)
+	outName := fmt.Sprintf("%s-%s-bundle.tar.%s",
+		safeBundleName(spec.ChartName), safeBundleName(spec.ChartVersion), ext)
 	outPath := filepath.Join(spec.OutputDir, outName)
 	out, err := os.Create(outPath)
 	if err != nil {

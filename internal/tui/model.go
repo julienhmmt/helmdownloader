@@ -2,6 +2,8 @@
 package tui
 
 import (
+	"context"
+
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/progress"
 	"charm.land/bubbles/v2/spinner"
@@ -41,6 +43,12 @@ type model struct {
 	pipeline *pipeline.Pipeline
 	styles   styleSet
 	logger   *log.Logger
+
+	// ctx is cancelled on any quit/reset path so in-flight helm and registry
+	// operations abort instead of running to completion after the user leaves.
+	// cancel is the matching cancel func; it is safe to call more than once.
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	state    state
 	width    int
@@ -102,12 +110,16 @@ func New(cfg config.Config, logger *log.Logger) model {
 	versionsList.SetShowHelp(false)
 	versionsList.Styles.Title = titleStyle
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	return model{
 		cfg:      cfg,
 		client:   artifacthub.New(cfg.ArtifactHubURL, logger),
 		pipeline: pipeline.New(cfg, logger),
 		styles:   newStyles(),
 		logger:   logger,
+		ctx:      ctx,
+		cancel:   cancel,
 		state:    stateSearch,
 		spinner:  spin,
 		progress: prog,

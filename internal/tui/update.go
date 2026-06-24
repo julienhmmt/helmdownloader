@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"context"
+
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"github.com/julienhmmt/helmdownloader/pkg/images"
@@ -86,7 +88,8 @@ func (m model) updateComponents(msg tea.Msg) (tea.Model, tea.Cmd) {
 // handleKey routes key presses based on the active screen.
 func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "ctrl+c" {
-		return m, tea.Batch(cleanupCmd(m.prepared.WorkDir), tea.Quit)
+		m.cancel()
+		return m, tea.Batch(cleanupCmd(m.prepared.WorkDir, m.prepared.TempWorkDir), tea.Quit)
 	}
 	switch m.state {
 	case stateSearch:
@@ -116,9 +119,10 @@ func (m model) handleSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.state = stateSearching
-		return m, tea.Batch(m.spinner.Tick, searchCmd(m.client, query, m.cfg.SearchLimit))
+		return m, tea.Batch(m.spinner.Tick, searchCmd(m.ctx, m.client, query, m.cfg.SearchLimit))
 	case "esc":
-		return m, tea.Batch(cleanupCmd(m.prepared.WorkDir), tea.Quit)
+		m.cancel()
+		return m, tea.Batch(cleanupCmd(m.prepared.WorkDir, m.prepared.TempWorkDir), tea.Quit)
 	}
 	return m.updateComponents(msg)
 }
@@ -139,7 +143,7 @@ func (m model) handleResultsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		m.selectedPkg = item.pkg
 		m.state = stateSearching
-		return m, tea.Batch(m.spinner.Tick, versionsCmd(m.client, item.pkg))
+		return m, tea.Batch(m.spinner.Tick, versionsCmd(m.ctx, m.client, item.pkg))
 	}
 	return m.updateComponents(msg)
 }
@@ -162,9 +166,14 @@ func (m model) handleVersionsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.state = statePreparing
 		var cleanup tea.Cmd
 		if m.prepared.WorkDir != "" {
-			cleanup = cleanupCmd(m.prepared.WorkDir)
+			cleanup = cleanupCmd(m.prepared.WorkDir, m.prepared.TempWorkDir)
 		}
-		return m, tea.Batch(m.spinner.Tick, cleanup, prepareCmd(m.pipeline, m.selectedPkg, m.selectedVersion))
+		// Starting a new prepare: abort any operation still running from a prior
+		// selection, then install a fresh context so the new work is not born
+		// cancelled.
+		m.cancel()
+		m.ctx, m.cancel = context.WithCancel(context.Background())
+		return m, tea.Batch(m.spinner.Tick, cleanup, prepareCmd(m.ctx, m.pipeline, m.selectedPkg, m.selectedVersion))
 	}
 	return m.updateComponents(msg)
 }
@@ -208,7 +217,7 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.entries, m.failures = nil, nil
 		m.state = stateDownloading
 		m.downCurrent, m.downTotal = 0, len(refs)
-		return m, tea.Batch(m.spinner.Tick, downloadCmd(m.pipeline, m.prepared, refs, m.activity))
+		return m, tea.Batch(m.spinner.Tick, downloadCmd(m.ctx, m.pipeline, m.prepared, refs, m.activity))
 	}
 	return m, nil
 }
@@ -222,7 +231,7 @@ func (m model) handleDownloadReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 		m.failures = nil
 		m.state = stateDownloading
 		m.downCurrent, m.downTotal = 0, len(refs)
-		return m, tea.Batch(m.spinner.Tick, downloadCmd(m.pipeline, m.prepared, refs, m.activity))
+		return m, tea.Batch(m.spinner.Tick, downloadCmd(m.ctx, m.pipeline, m.prepared, refs, m.activity))
 	case "c":
 		if len(m.entries) == 0 {
 			return m, nil
@@ -231,7 +240,8 @@ func (m model) handleDownloadReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 		return m, tea.Batch(m.spinner.Tick,
 			bundleCmd(m.pipeline, m.prepared, m.selectedPkg, m.selectedVersion, m.entries))
 	case "q", "esc":
-		return m, tea.Batch(cleanupCmd(m.prepared.WorkDir), tea.Quit)
+		m.cancel()
+		return m, tea.Batch(cleanupCmd(m.prepared.WorkDir, m.prepared.TempWorkDir), tea.Quit)
 	}
 	return m, nil
 }
@@ -259,7 +269,8 @@ func (m model) handleAddImageKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m model) handleEndKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "esc", "enter":
-		return m, tea.Batch(cleanupCmd(m.prepared.WorkDir), tea.Quit)
+		m.cancel()
+		return m, tea.Batch(cleanupCmd(m.prepared.WorkDir, m.prepared.TempWorkDir), tea.Quit)
 	case "n":
 		fresh, cmd := m.reset()
 		return fresh, cmd
@@ -269,12 +280,13 @@ func (m model) handleEndKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // reset returns the model to a fresh search state for another chart.
 func (m model) reset() (model, tea.Cmd) {
+	m.cancel()
 	fresh := New(m.cfg, m.logger)
 	fresh.width, fresh.height = m.width, m.height
 	fresh.results.SetSize(m.width-2, m.height-6)
 	fresh.versions.SetSize(m.width-2, m.height-6)
 	fresh.progress.SetWidth(m.progress.Width())
-	return fresh, cleanupCmd(m.prepared.WorkDir)
+	return fresh, cleanupCmd(m.prepared.WorkDir, m.prepared.TempWorkDir)
 }
 
 // selectedRefs returns the references of the images marked for inclusion.
