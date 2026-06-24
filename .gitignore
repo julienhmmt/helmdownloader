@@ -1,8 +1,9 @@
+*.log
 .DS_Store
 .env
-*.log
 .task/checksum
 archives/*
+plans/
 
 # Go
 coverage.out
