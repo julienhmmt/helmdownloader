@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 
+	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -50,16 +51,19 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 type Puller struct {
 	platform string
 	proxy    string
+	auth     bool
 	logger   *log.Logger
 }
 
 // NewPuller returns a Puller that pulls images for the given platform string,
-// e.g. "linux/amd64".
-func NewPuller(platform, proxy string, logger *log.Logger) *Puller {
+// e.g. "linux/amd64". When auth is true, pulls authenticate via the default
+// Docker keychain (DOCKER_CONFIG or ~/.docker/config.json) so private
+// registries can be reached.
+func NewPuller(platform, proxy string, auth bool, logger *log.Logger) *Puller {
 	if platform == "" {
 		platform = "linux/amd64"
 	}
-	return &Puller{platform: platform, proxy: proxy, logger: logger}
+	return &Puller{platform: platform, proxy: proxy, auth: auth, logger: logger}
 }
 
 // Save pulls srcRef for the configured platform and writes it to destPath as a
@@ -70,20 +74,20 @@ func NewPuller(platform, proxy string, logger *log.Logger) *Puller {
 // image (e.g. "sha256:..."). The digest pins exactly what was bundled so the
 // airgapped side can verify it, even though the tarball itself is tagged rather
 // than digest-referenced.
-func (p *Puller) Save(ctx context.Context, srcRef, destRef, destPath string, onBytes BytesFunc) (string, error) {
-	p.logger.Infof("pulling image %s for platform %s", srcRef, p.platform)
-
+// buildOpts assembles the crane options for a pull: platform, proxy (when
+// configured), auth (when enabled), and the context. Extracted for
+// testability so the auth/proxy wiring can be asserted without a network
+// pull.
+func (p *Puller) buildOpts(ctx context.Context) ([]crane.Option, error) {
 	platform, err := v1.ParsePlatform(p.platform)
 	if err != nil {
-		return "", fmt.Errorf("parse platform %q: %w", p.platform, err)
+		return nil, fmt.Errorf("parse platform %q: %w", p.platform, err)
 	}
-
-	// Build crane options with proxy support
 	opts := []crane.Option{crane.WithPlatform(platform)}
 	if p.proxy != "" {
 		proxyURL, err := url.Parse(p.proxy)
 		if err != nil {
-			return "", fmt.Errorf("parse proxy URL %q: %w", p.proxy, err)
+			return nil, fmt.Errorf("parse proxy URL %q: %w", p.proxy, err)
 		}
 		// Clone the stdlib default transport so we keep its sane timeouts, idle
 		// connection pool, and HTTP/2 support, overriding only the proxy.
@@ -91,11 +95,23 @@ func (p *Puller) Save(ctx context.Context, srcRef, destRef, destPath string, onB
 		transport.Proxy = http.ProxyURL(proxyURL)
 		opts = append(opts, crane.WithTransport(transport))
 	}
+	if p.auth {
+		opts = append(opts, crane.WithAuthFromKeychain(authn.DefaultKeychain))
+	}
+	opts = append(opts, crane.WithContext(ctx))
+	return opts, nil
+}
 
+func (p *Puller) Save(ctx context.Context, srcRef, destRef, destPath string, onBytes BytesFunc) (string, error) {
+	p.logger.Infof("pulling image %s for platform %s", srcRef, p.platform)
+	opts, err := p.buildOpts(ctx)
+	if err != nil {
+		return "", err
+	}
 	// Pull the image. The timeout configuration is not used here because
 	// crane.Pull returns a lazy-loading image that retains the context,
 	// which would cause the layer write below to time out during downloads.
-	img, err := crane.Pull(srcRef, append(opts, crane.WithContext(ctx))...)
+	img, err := crane.Pull(srcRef, opts...)
 	if err != nil {
 		return "", fmt.Errorf("pull %s: %w", srcRef, err)
 	}

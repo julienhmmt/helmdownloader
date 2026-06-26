@@ -63,6 +63,11 @@ type Config struct {
 	// ImportImages, when set, is the path to read an approved image list (JSON)
 	// from at download time, overriding the discovered/selected set.
 	ImportImages string `yaml:"import_images"`
+	// RegistryAuth, when true, enables authenticated pulls using the default
+	// Docker keychain (reads ~/.docker/config.json or $DOCKER_CONFIG/config.json,
+	// and Podman's containers/auth.json). Use this to pull from private
+	// registries; log in with `docker login` (or `podman login`) first.
+	RegistryAuth bool `yaml:"registry_auth"`
 }
 
 // Default returns a Config populated with sensible defaults.

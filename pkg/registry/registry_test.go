@@ -11,7 +11,7 @@ import (
 )
 
 func TestSave_InvalidProxyErrorsBeforeNetwork(t *testing.T) {
-	p := registry.NewPuller("linux/amd64", "://missing-scheme", log.Discard())
+	p := registry.NewPuller("linux/amd64", "://missing-scheme", false, log.Discard())
 	_, err := p.Save(context.Background(), "redis:7", "rgy.local/redis:7",
 		filepath.Join(t.TempDir(), "out.tar"), nil)
 	assert.ErrorContains(t, err, "proxy")
@@ -22,7 +22,7 @@ func TestNewPuller_DefaultsPlatform(t *testing.T) {
 	// is the only way Save reports a platform parse error. Confirm the default
 	// path does not error on platform parsing by using a bad proxy to short out
 	// before any network call.
-	p := registry.NewPuller("", "://bad", log.Discard())
+	p := registry.NewPuller("", "://bad", false, log.Discard())
 	_, err := p.Save(context.Background(), "redis:7", "rgy.local/redis:7",
 		filepath.Join(t.TempDir(), "out.tar"), nil)
 	assert.ErrorContains(t, err, "proxy")

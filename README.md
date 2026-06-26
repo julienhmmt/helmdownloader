@@ -77,6 +77,7 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 | `-output` | (from config) | Output directory for bundles (default: archives) |
 | `-work-dir` | (from config) | Work directory for intermediate files (charts, images). If empty, a temporary directory is used |
 | `-resume` | `false` | Reuse image tarballs already present in a persistent work dir instead of re-pulling (use with `-work-dir`) |
+| `-registry-auth` | `false` | Enable authenticated pulls from private registries using the default Docker keychain |
 | `-compression` | `gzip` | Bundle compression codec: `gzip` (`.tar.gz`) or `zstd` (`.tar.zst`, smaller) |
 | `-min-free-mb` | `500` | Minimum free disk space (MiB) required on the work dir before downloading; `0` disables the check |
 | `-concurrency` | `4` | Maximum number of images downloaded in parallel |
@@ -135,6 +136,21 @@ The JSON format is an array of entries:
   {"ref": "quay.io/argoproj/argocd:v3.2.6", "selected": true},
   {"ref": "redis:7", "selected": false}
 ]
+```
+
+### Pulling from private registries
+
+Use `-registry-auth` to pull images from private registries. The tool uses the default Docker keychain, so log in first with `docker login` (or `podman login`):
+
+```bash
+docker login registry.example.com
+./helmdownloader -registry-auth -registry-prefix registry.example.com/mirror
+```
+
+To use a non-default credentials file, set the `DOCKER_CONFIG` environment variable to the directory containing `config.json`:
+
+```bash
+DOCKER_CONFIG=/path/to/creds ./helmdownloader -registry-auth
 ```
 
 ### Subcommands

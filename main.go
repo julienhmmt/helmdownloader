@@ -49,6 +49,7 @@ func main() {
 	prefix := flag.String("registry-prefix", "", "override the private registry prefix")
 	platform := flag.String("platform", "", "override the image platform (e.g. linux/amd64)")
 	resume := flag.Bool("resume", false, "reuse image tarballs already present in a persistent work dir")
+	registryAuth := flag.Bool("registry-auth", false, "enable authenticated pulls from private registries using the default Docker keychain ($DOCKER_CONFIG or ~/.docker/config.json)")
 	compression := flag.String("compression", "", "bundle compression: gzip (default) or zstd")
 	minFreeDiskMB := flag.Int("min-free-mb", -1, "minimum free disk space in MiB before download (0 disables)")
 	proxy := flag.String("proxy", "", "override proxy URL (e.g. http://proxy.domain.local:3128)")
@@ -90,6 +91,9 @@ func main() {
 	}
 	if *resume {
 		cfg.Resume = true
+	}
+	if *registryAuth {
+		cfg.RegistryAuth = true
 	}
 	if *compression != "" {
 		cfg.Compression = *compression
