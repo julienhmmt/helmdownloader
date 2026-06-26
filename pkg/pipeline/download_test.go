@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"archive/tar"
 	"context"
 	"fmt"
 	"os"
@@ -163,11 +164,13 @@ func TestDownload_ResumeReusesExistingTarball(t *testing.T) {
 	pl.cfg.Resume = true
 	workDir := t.TempDir()
 
-	// Pre-seed a tarball + digest sidecar for the first ref, as a prior run would.
+	// Pre-seed a valid tarball + digest sidecar for the first ref, as a prior
+	// successful run would (a real docker tarball ends with the two trailing
+	// zero blocks that tarballComplete checks for).
 	imagesDir := filepath.Join(workDir, "images")
 	require.NoError(t, os.MkdirAll(imagesDir, 0o755))
 	cachedTar := filepath.Join(imagesDir, tarballName("repo/cached:1"))
-	require.NoError(t, os.WriteFile(cachedTar, []byte("cached"), 0o644))
+	writeMinimalTar(t, cachedTar)
 	require.NoError(t, os.WriteFile(cachedTar+".digest", []byte("sha256:cached"), 0o644))
 
 	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: workDir}, refs, nil, nil)
@@ -179,6 +182,105 @@ func TestDownload_ResumeReusesExistingTarball(t *testing.T) {
 	assert.Equal(t, "sha256:cached", entries[0].Digest)
 	// The fresh ref is pulled normally.
 	assert.Equal(t, 1, saver.attemptCount("docker.io/repo/fresh:2"))
+}
+
+func TestDownload_ResumeRejectsTruncatedTarball(t *testing.T) {
+	refs := []string{"repo/cached:1", "repo/fresh:2"}
+	saver := &fakeSaver{}
+	pl := newTestPipeline(saver, 2)
+	pl.cfg.Resume = true
+	workDir := t.TempDir()
+
+	// Seed a truncated tarball (raw bytes, not a valid tar) with a sidecar:
+	// it has a digest but fails tarballComplete, so it must be re-pulled.
+	imagesDir := filepath.Join(workDir, "images")
+	require.NoError(t, os.MkdirAll(imagesDir, 0o755))
+	cachedTar := filepath.Join(imagesDir, tarballName("repo/cached:1"))
+	require.NoError(t, os.WriteFile(cachedTar, []byte("not-a-complete-tar"), 0o644))
+	require.NoError(t, os.WriteFile(cachedTar+".digest", []byte("sha256:cached"), 0o644))
+
+	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: workDir}, refs, nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, failures)
+	require.Len(t, entries, 2)
+	// The truncated ref is re-pulled rather than reused.
+	assert.Equal(t, 1, saver.attemptCount("docker.io/repo/cached:1"))
+	assert.Equal(t, "sha256:fake", entries[0].Digest)
+	assert.Equal(t, 1, saver.attemptCount("docker.io/repo/fresh:2"))
+}
+
+func TestDownload_ResumeRejectsMissingSidecar(t *testing.T) {
+	refs := []string{"repo/cached:1", "repo/fresh:2"}
+	saver := &fakeSaver{}
+	pl := newTestPipeline(saver, 2)
+	pl.cfg.Resume = true
+	workDir := t.TempDir()
+
+	// Seed a complete valid tarball but NO digest sidecar: it cannot be
+	// integrity-pinned, so it must be re-pulled.
+	imagesDir := filepath.Join(workDir, "images")
+	require.NoError(t, os.MkdirAll(imagesDir, 0o755))
+	cachedTar := filepath.Join(imagesDir, tarballName("repo/cached:1"))
+	writeMinimalTar(t, cachedTar)
+
+	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: workDir}, refs, nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, failures)
+	require.Len(t, entries, 2)
+	assert.Equal(t, 1, saver.attemptCount("docker.io/repo/cached:1"))
+	assert.Equal(t, "sha256:fake", entries[0].Digest)
+}
+
+func TestTarballComplete(t *testing.T) {
+	valid := filepath.Join(t.TempDir(), "valid.tar")
+	writeMinimalTar(t, valid)
+
+	// A minimal tar written by archive/tar ends with the two zero blocks.
+	truncated := filepath.Join(t.TempDir(), "trunc.tar")
+	writeMinimalTar(t, truncated)
+	data, err := os.ReadFile(truncated)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(truncated, data[:len(data)-1024], 0o644)) // strip trailing zeros
+
+	tiny := filepath.Join(t.TempDir(), "tiny.tar")
+	require.NoError(t, os.WriteFile(tiny, []byte("x"), 0o644))
+
+	odd := filepath.Join(t.TempDir(), "odd.tar")
+	require.NoError(t, os.WriteFile(odd, make([]byte, 2049), 0o644)) // not a multiple of 512
+
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{"valid tar", valid, true},
+		{"truncated tar", truncated, false},
+		{"file smaller than 1024", tiny, false},
+		{"size not multiple of 512", odd, false},
+		{"non-existent", filepath.Join(t.TempDir(), "nope.tar"), false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, tarballComplete(tc.path))
+		})
+	}
+}
+
+// writeMinimalTar writes a minimal valid tar archive (one small regular file
+// entry) to path. archive/tar.Writer.Close appends the two trailing 512-byte
+// zero blocks that tarballComplete checks for, so the result passes the
+// integrity gate.
+func writeMinimalTar(t *testing.T, path string) {
+	t.Helper()
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, f.Close()) }()
+	tw := tar.NewWriter(f)
+	hdr := &tar.Header{Name: "layer.tar", Mode: 0o644, Size: 4}
+	require.NoError(t, tw.WriteHeader(hdr))
+	_, err = tw.Write([]byte("data"))
+	require.NoError(t, err)
+	require.NoError(t, tw.Close())
 }
 
 func TestDownload_RetriesTransientFailures(t *testing.T) {

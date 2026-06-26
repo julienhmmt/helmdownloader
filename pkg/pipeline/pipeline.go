@@ -217,7 +217,7 @@ func (p *Pipeline) Download(ctx context.Context, prepared Prepared, refs []strin
 			// pulling it again. The digest sidecar restores the manifest digest so
 			// the bundle stays fully pinned.
 			if p.cfg.Resume {
-				if digest, ok := reusableTarball(tarPath); ok {
+				if digest, ok := p.reusableTarball(tarPath); ok {
 					p.logger.Infof("reusing existing tarball for %s", ref)
 					mu.Lock()
 					completed++
@@ -417,18 +417,59 @@ func writeDigestSidecar(tarPath, digest string) {
 	_ = os.WriteFile(digestSidecarPath(tarPath), []byte(digest), 0o600)
 }
 
-// reusableTarball reports whether a non-empty tarball already exists at tarPath,
-// returning the recorded digest (empty when no sidecar is present).
-func reusableTarball(tarPath string) (string, bool) {
+// reusableTarball reports whether a complete tarball with a recorded digest
+// already exists at tarPath, returning that digest. A tarball is reusable only
+// when it is non-empty, carries a non-empty digest sidecar, and passes
+// tarballComplete — so a run killed mid-write (which leaves a truncated tar
+// with no sidecar) is re-pulled rather than silently bundled with an unpinned
+// digest. A rejection is logged at debug level so the cause is visible under -v.
+func (p *Pipeline) reusableTarball(tarPath string) (string, bool) {
 	info, err := os.Stat(tarPath)
 	if err != nil || info.IsDir() || info.Size() == 0 {
 		return "", false
 	}
 	data, err := os.ReadFile(digestSidecarPath(tarPath))
 	if err != nil {
-		return "", true
+		p.logger.Debugf("resume: %s has no digest sidecar, re-pulling", tarPath)
+		return "", false
 	}
-	return strings.TrimSpace(string(data)), true
+	digest := strings.TrimSpace(string(data))
+	if digest == "" {
+		p.logger.Debugf("resume: %s has empty digest sidecar, re-pulling", tarPath)
+		return "", false
+	}
+	if !tarballComplete(tarPath) {
+		p.logger.Debugf("resume: %s failed integrity check, re-pulling", tarPath)
+		return "", false
+	}
+	return digest, true
+}
+
+// tarballComplete reports whether tarPath looks like a complete tar archive by
+// checking the two trailing 512-byte zero blocks that terminate a well-formed
+// tar. It is a cheap integrity gate for -resume: a truncated file fails here
+// and is re-pulled rather than silently bundled. It is deliberately pure (no
+// logger) so it stays unit-testable.
+func tarballComplete(tarPath string) bool {
+	f, err := os.Open(tarPath)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+	stat, err := f.Stat()
+	if err != nil || stat.Size() < 1024 || stat.Size()%512 != 0 {
+		return false
+	}
+	buf := make([]byte, 1024)
+	if _, err := f.ReadAt(buf, stat.Size()-1024); err != nil {
+		return false
+	}
+	for _, b := range buf {
+		if b != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 var unsafeChars = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
