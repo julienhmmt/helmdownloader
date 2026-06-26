@@ -32,6 +32,7 @@ Instead of writing yet another bash script, I used [Claude Code](https://www.cla
 The payoff is clear:
 
 - **One tool, all charts.** No more script per application. Search any chart, select it, and the same pipeline handles the rest.
+- **Sort and filter the results.** Sort matches by stars, name, or last-updated date, and filter by author or publishing company — all on the already-fetched results, no extra queries.
 - **Automatic image discovery.** No more hard-coded list. The tool runs `helm template`, recursively walks every rendered manifest, the top-level `values.yaml`, and every subchart `charts/*/values.yaml`, and extracts all image references — including the split `registry` / `repository` / `tag` / `digest` form many charts use.
 - **Faster bundling.** Image pulling is *daemonless* via [go-containerregistry](https://github.com/google/go-containerregistry): **no Docker required**. Images download in parallel, with retries and exponential backoff. A failed image doesn't abort the batch — you see the full failure set at once.
 - **Verifiable bundles.** Every bundled file is sha256'd into `sha256sums.txt`, image manifest digests are pinned in `images.txt` and `manifest.json`, and the generated `load.sh` verifies checksums before pushing.
@@ -85,12 +86,12 @@ The interface opens on a search screen.
 
 ### Step 2 — Search and select
 
-Type a chart name (for example `argo-cd`), hit `Enter`, then navigate the results to pick a chart and version.
+Type a chart name (for example `argo-cd`), hit `Enter`, then navigate the results to pick a chart and version. Each row shows stars, repo, publisher, app version, and description. On a crowded result list, press `s` to sort by stars, name, or update date, `o` to flip the direction, and `f`/`F`/`Tab` to filter by author or company.
 
 | Screen | Keys |
 | ------ | ---- |
 | Search | `Enter` to search, `Esc` to quit |
-| Results | `Enter` to select, `/` to filter |
+| Results | `Enter` select, `/` fuzzy filter, `s` sort field, `o` direction, `f` filter field, `F` type filter, `Tab` cycle values |
 | Versions | `Enter` to select |
 | Review | `Space` toggle, `a` add, `d` delete, `Enter` download |
 

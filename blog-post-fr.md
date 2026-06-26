@@ -32,6 +32,7 @@ Plutôt que d'écrire un énième script bash, j'ai utilisé [Claude Code](https
 Le gain est net :
 
 - **Un seul outil, toutes les charts.** Plus de script par application. On cherche n'importe quelle chart, on la sélectionne, et le même pipeline s'occupe du reste.
+- **Tri et filtrage des résultats.** Triez les résultats par étoiles, par nom ou par date de dernière mise à jour, et filtrez par auteur ou par société éditrice — le tout sur les résultats déjà récupérés, sans nouvelle requête.
 - **Découverte automatique des images.** Fini la liste codée en dur. L'outil fait un `helm template`, parcourt récursivement tous les manifestes rendus, le `values.yaml` racine, et chaque `charts/*/values.yaml` de subchart, et extrait toutes les références d'images — y compris la forme éclatée `registry` / `repository` / `tag` / `digest` qu'utilisent beaucoup de charts.
 - **Plus rapide pour bundler.** Le pull des images est *daemonless* via [go-containerregistry](https://github.com/google/go-containerregistry) : **pas besoin de Docker**. Les images se téléchargent en parallèle, avec retry et backoff exponentiel. Une image en échec n'interrompt pas le lot — on voit l'ensemble des échecs d'un coup.
 - **Bundles vérifiables.** Chaque fichier du bundle est sha256'é dans `sha256sums.txt`, les digests de manifeste sont épinglés dans `images.txt` et `manifest.json`, et le `load.sh` généré vérifie les checksums avant de pousser.
@@ -85,12 +86,12 @@ L'interface s'ouvre sur un écran de recherche.
 
 ### Étape 2 — Chercher et sélectionner
 
-Tapez le nom d'une chart (par exemple `argo-cd`), `Entrée`, puis naviguez dans les résultats pour choisir la chart et sa version.
+Tapez le nom d'une chart (par exemple `argo-cd`), `Entrée`, puis naviguez dans les résultats pour choisir la chart et sa version. Chaque ligne affiche les étoiles, le dépôt, l'éditeur, la version applicative et la description. Sur une liste chargée, appuyez sur `s` pour trier par étoiles, nom ou date de mise à jour, `o` pour inverser le sens, et `f`/`F`/`Tab` pour filtrer par auteur ou société.
 
 | Écran | Touches |
 | ----- | ------- |
 | Recherche | `Entrée` pour chercher, `Échap` pour quitter |
-| Résultats | `Entrée` pour sélectionner, `/` pour filtrer |
+| Résultats | `Entrée` sélectionner, `/` filtre flou, `s` champ de tri, `o` sens, `f` champ de filtre, `F` saisir filtre, `Tab` parcourir les valeurs |
 | Versions | `Entrée` pour sélectionner |
 | Révision | `Espace` (dé)cocher, `a` ajouter, `d` supprimer, `Entrée` télécharger |
 

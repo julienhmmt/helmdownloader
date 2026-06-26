@@ -5,6 +5,7 @@ A TUI (Terminal User Interface) application (v0.2.0) for downloading Helm charts
 ## Features
 
 - **Search**: Search for Helm charts on [ArtifactHub](https://artifacthub.io)
+- **Sort & filter**: Sort results by stars, name, or last-updated date, and filter by author or publishing company
 - **Select**: Choose Helm charts and their versions
 - **Auto-discover**: Automatically extract all container image references from a rendered chart and its `values.yaml`, including the split `registry`/`repository`/`tag`/`digest` form used by many charts
 - **Review**: Manually add, remove, or toggle individual images before downloading
@@ -46,12 +47,27 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 | Screen | Keys | Description |
 | ------ | ---- | ------------ |
 | **Search** | `Enter` to search, `Esc` to quit | Type a chart name to search ArtifactHub |
-| **Results** | `Enter` to select, `/` to filter, `Esc` to back | Browse matching charts |
+| **Results** | `Enter` select, `/` fuzzy filter, `s` sort field, `o` sort direction, `f` filter field, `F` type filter, `Tab` cycle values, `Esc` back | Browse matching charts; each row shows stars, repo, publisher, app version, and description |
+| **Filter** | `Enter` apply, `Tab` cycle values, `Esc` cancel | Type a substring to filter by author or company |
 | **Versions** | `Enter` to select, `/` to filter, `Esc` to back | Pick a chart version |
 | **Review** | `Space` toggle, `a` add, `d` delete, `Enter` download, `Esc` back | Review auto-discovered images |
 | **Add Image** | `Enter` confirm, `Esc` cancel | Manually add an image reference |
 | **Download** | (waits) | Pulls images and builds the bundle |
 | **Done** | `n` new bundle, `q` quit | Shows the path to the created bundle |
+
+### Sorting and Filtering Results
+
+The results screen has two independent ways to narrow a long list of charts:
+
+- **`/` fuzzy filter** — the built-in list filter, matching against chart name, repo, author, and organization.
+- **Structured sort/filter** — driven by ArtifactHub metadata, shown on the status line above the footer:
+  - `s` cycles the sort field: **stars → name → updated → stars**.
+  - `o` toggles the sort direction (`↑` ascending / `↓` descending). Default is **stars, descending**.
+  - `f` cycles the filter field: **off → author → company → off**.
+  - `F` opens a substring input to type a filter value by hand.
+  - `Tab` cycles through the distinct author/company values present in the current results.
+
+The status line reports the active `sort:`, `filter:`, and the count of charts shown. Sorting and filtering happen entirely on the already-fetched results — no extra ArtifactHub queries.
 
 ### CLI Flags
 
