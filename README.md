@@ -137,6 +137,24 @@ The JSON format is an array of entries:
 ]
 ```
 
+### Subcommands
+
+#### verify
+
+```bash
+./helmdownloader verify argo-cd-1.0.0-bundle.tar.gz
+```
+
+Checks bundle integrity without contacting any registry: re-hashes every file against `sha256sums.txt` and confirms `manifest.json` is well-formed. Exits 0 if intact, 1 on any mismatch, 2 on bad usage. Use this on the airgapped side after transfer, before running `load.sh`.
+
+#### diff
+
+```bash
+./helmdownloader diff argo-cd-1.8.0-bundle.tar.gz argo-cd-1.9.0-bundle.tar.gz
+```
+
+Compares the image sets of two bundles by source reference and pinned digest, printing `+` added, `-` removed, and `~` changed (with old → new digest). Use this to see exactly what to re-mirror when updating a chart version in an airgapped environment.
+
 ## Bundle Format
 
 Each bundle is a `.tar.gz` (or `.tar.zst` with `-compression zstd`) named `<chart>-<version>-bundle.tar.gz` containing:
