@@ -5,6 +5,7 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+
 	"github.com/julienhmmt/helmdownloader/pkg/images"
 	"github.com/julienhmmt/helmdownloader/pkg/pipeline"
 )
@@ -33,14 +34,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.reviewImages = typed.prepared.Images
 		m.reviewCursor = 0
 		m.state = stateReview
+		if err := exportImages(m.cfg.ExportImages, m.reviewImages); err != nil {
+			m.err = err
+			m.state = stateError
+			return m, nil
+		}
 		return m, nil
 	case progressMsg:
-		m.downCurrent, m.downTotal, m.downRef = typed.current, typed.total, typed.ref
-		// A finished image clears any stale byte counter for the next one.
-		m.downWritten, m.downSize = 0, 0
+		m.downCurrent, m.downTotal = typed.current, typed.total
+		delete(m.imageProgress, typed.ref)
 		return m, waitForActivity(m.activity)
 	case byteProgressMsg:
-		m.downWritten, m.downSize = typed.written, typed.total
+		m.imageProgress[typed.ref] = imageProgress{written: typed.written, total: typed.total}
 		return m, waitForActivity(m.activity)
 	case downloadDoneMsg:
 		m.entries = append(m.entries, typed.entries...)
@@ -212,9 +217,26 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.countSelected() == 0 {
 			return m, nil
 		}
+		// If an approved image list was provided, it overrides the discovered
+		// set: only refs present in the import (and marked Selected) are pulled.
+		if m.cfg.ImportImages != "" {
+			imported, err := importImages(m.cfg.ImportImages)
+			if err != nil {
+				m.err = err
+				m.state = stateError
+				return m, nil
+			}
+			if len(imported) > 0 {
+				m.reviewImages = imported
+			}
+		}
+		if m.countSelected() == 0 {
+			return m, nil // import may have deselected everything
+		}
 		m.prepared.Images = m.reviewImages
 		refs := selectedRefs(m.reviewImages)
 		m.entries, m.failures = nil, nil
+		m.imageProgress = map[string]imageProgress{}
 		m.state = stateDownloading
 		m.downCurrent, m.downTotal = 0, len(refs)
 		return m, tea.Batch(m.spinner.Tick, downloadCmd(m.ctx, m.pipeline, m.prepared, refs, m.activity))
@@ -229,6 +251,7 @@ func (m model) handleDownloadReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 	case "r":
 		refs := failureRefs(m.failures)
 		m.failures = nil
+		m.imageProgress = map[string]imageProgress{}
 		m.state = stateDownloading
 		m.downCurrent, m.downTotal = 0, len(refs)
 		return m, tea.Batch(m.spinner.Tick, downloadCmd(m.ctx, m.pipeline, m.prepared, refs, m.activity))
@@ -281,7 +304,7 @@ func (m model) handleEndKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // reset returns the model to a fresh search state for another chart.
 func (m model) reset() (model, tea.Cmd) {
 	m.cancel()
-	fresh := New(m.cfg, m.logger)
+	fresh := newModel(m.cfg, m.logger)
 	fresh.width, fresh.height = m.width, m.height
 	fresh.results.SetSize(m.width-2, m.height-6)
 	fresh.versions.SetSize(m.width-2, m.height-6)

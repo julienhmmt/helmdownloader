@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
 	"github.com/julienhmmt/helmdownloader/pkg/bundle"
 	"github.com/julienhmmt/helmdownloader/pkg/config"
@@ -35,6 +36,12 @@ const (
 	stateDone
 	stateError
 )
+
+// imageProgress is the byte-level progress of one in-flight image pull.
+type imageProgress struct {
+	written int64
+	total   int64
+}
 
 // model is the root Bubble Tea model holding all UI and domain state.
 type model struct {
@@ -69,23 +76,24 @@ type model struct {
 	activity    chan tea.Msg
 	downCurrent int
 	downTotal   int
-	downRef     string
-	downWritten int64
-	downSize    int64
-	entries     []bundle.ImageEntry
-	failures    []pipeline.ImageFailure
-	bundlePath  string
-	err         error
+	// imageProgress tracks byte-level progress per in-flight image ref,
+	// so the download screen can show all concurrent pulls advancing
+	// rather than flapping between refs.
+	imageProgress map[string]imageProgress
+	entries       []bundle.ImageEntry
+	failures      []pipeline.ImageFailure
+	bundlePath    string
+	err           error
 }
 
-// New constructs the root model from cfg.
-func New(cfg config.Config, logger *log.Logger) model {
+// newModel constructs the root model from cfg.
+func newModel(cfg config.Config, logger *log.Logger) model {
 	spin := spinner.New()
 	spin.Spinner = spinner.Dot
 	spin.Style = lipgloss.NewStyle().Foreground(colorAccent)
 
 	prog := progress.New(
-		progress.WithDefaultBlend(),
+		progress.WithColors(lipgloss.Color("#C8863C"), lipgloss.Color("#E6B864")),
 		progress.WithWidth(60),
 	)
 
@@ -100,12 +108,16 @@ func New(cfg config.Config, logger *log.Logger) model {
 
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(colorAccent).Padding(0, 1)
 
-	resultsList := list.New(nil, list.NewDefaultDelegate(), 0, 0)
+	chartDelegate := list.NewDefaultDelegate()
+	chartDelegate.Styles = warmDelegateStyles()
+	resultsList := list.New(nil, chartDelegate, 0, 0)
 	resultsList.Title = "Charts"
 	resultsList.SetShowHelp(false)
 	resultsList.Styles.Title = titleStyle
 
-	versionsList := list.New(nil, list.NewDefaultDelegate(), 0, 0)
+	versionDelegate := list.NewDefaultDelegate()
+	versionDelegate.Styles = warmDelegateStyles()
+	versionsList := list.New(nil, versionDelegate, 0, 0)
 	versionsList.Title = "Versions"
 	versionsList.SetShowHelp(false)
 	versionsList.Styles.Title = titleStyle
@@ -113,21 +125,22 @@ func New(cfg config.Config, logger *log.Logger) model {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return model{
-		cfg:      cfg,
-		client:   artifacthub.New(cfg.ArtifactHubURL, logger),
-		pipeline: pipeline.New(cfg, logger),
-		styles:   newStyles(),
-		logger:   logger,
-		ctx:      ctx,
-		cancel:   cancel,
-		state:    stateSearch,
-		spinner:  spin,
-		progress: prog,
-		search:   search,
-		addInput: add,
-		results:  resultsList,
-		versions: versionsList,
-		activity: make(chan tea.Msg, 16),
+		cfg:           cfg,
+		client:        artifacthub.New(cfg.ArtifactHubURL, logger),
+		pipeline:      pipeline.New(cfg, logger),
+		styles:        newStyles(),
+		logger:        logger,
+		ctx:           ctx,
+		cancel:        cancel,
+		state:         stateSearch,
+		spinner:       spin,
+		progress:      prog,
+		search:        search,
+		addInput:      add,
+		results:       resultsList,
+		versions:      versionsList,
+		activity:      make(chan tea.Msg, 16),
+		imageProgress: map[string]imageProgress{},
 	}
 }
 

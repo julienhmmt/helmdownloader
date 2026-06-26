@@ -77,6 +77,7 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 | `-output` | (from config) | Output directory for bundles (default: archives) |
 | `-work-dir` | (from config) | Work directory for intermediate files (charts, images). If empty, a temporary directory is used |
 | `-resume` | `false` | Reuse image tarballs already present in a persistent work dir instead of re-pulling (use with `-work-dir`) |
+| `-registry-auth` | `false` | Enable authenticated pulls from private registries using the default Docker keychain |
 | `-compression` | `gzip` | Bundle compression codec: `gzip` (`.tar.gz`) or `zstd` (`.tar.zst`, smaller) |
 | `-min-free-mb` | `500` | Minimum free disk space (MiB) required on the work dir before downloading; `0` disables the check |
 | `-concurrency` | `4` | Maximum number of images downloaded in parallel |
@@ -85,6 +86,8 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 | `-v` | `false` | Enable verbose logging (shortcut for `--log-level=debug`) |
 | `-log-level` | `info` | Set log level: `silent`, `info`, or `debug` |
 | `-log-file` | `helmdownloader.log` | Path for log output |
+| `-export-images` | (none) | Write the discovered image list (JSON) to this path after rendering, for security review |
+| `-import-images` | (none) | Read an approved image list (JSON) from this path at download time, overriding the discovered set |
 
 ### Configuration File
 
@@ -109,6 +112,65 @@ log_level: "debug"
 log_file: "helmdownloader.log"
 ```
 
+### Security Review Workflow
+
+Use `-export-images` and `-import-images` to review the discovered image list with a security team before pulling:
+
+```bash
+# 1. Run with -export-images: discover images, write the list, then quit
+#    from the Review screen (Esc) without downloading.
+./helmdownloader -export-images images.json
+
+# 2. Security team reviews/edits images.json (set selected: true/false,
+#    remove untrusted refs, add missing ones).
+
+# 3. Run with -import-images: the approved list overrides the discovered
+#    set at download time.
+./helmdownloader -import-images images.json
+```
+
+The JSON format is an array of entries:
+
+```json
+[
+  {"ref": "quay.io/argoproj/argocd:v3.2.6", "selected": true},
+  {"ref": "redis:7", "selected": false}
+]
+```
+
+### Pulling from private registries
+
+Use `-registry-auth` to pull images from private registries. The tool uses the default Docker keychain, so log in first with `docker login` (or `podman login`):
+
+```bash
+docker login registry.example.com
+./helmdownloader -registry-auth -registry-prefix registry.example.com/mirror
+```
+
+To use a non-default credentials file, set the `DOCKER_CONFIG` environment variable to the directory containing `config.json`:
+
+```bash
+DOCKER_CONFIG=/path/to/creds ./helmdownloader -registry-auth
+```
+
+### Subcommands
+
+#### verify
+
+```bash
+./helmdownloader verify argo-cd-1.0.0-bundle.tar.gz
+```
+
+Checks bundle integrity without contacting any registry: re-hashes every file against `sha256sums.txt` and confirms `manifest.json` is well-formed. Exits 0 if intact, 1 on any mismatch, 2 on bad usage. Use this on the airgapped side after transfer, before running `load.sh`.
+
+#### diff
+
+```bash
+./helmdownloader diff argo-cd-1.8.0-bundle.tar.gz argo-cd-1.9.0-bundle.tar.gz
+```
+
+Compares the image sets of two bundles by source reference and pinned digest, printing `+` added, `-` removed, and `~` changed (with old → new digest). Use this to see exactly what to re-mirror when updating a chart version in an airgapped environment.
+
 ## Bundle Format
 
 Each bundle is a `.tar.gz` (or `.tar.zst` with `-compression zstd`) named `<chart>-<version>-bundle.tar.gz` containing:
@@ -121,11 +183,14 @@ images/
   <image2>.tar
 images.txt                # manifest: source_ref  dest_ref  tar_name  digest
 manifest.json             # provenance: tool, chart, codec, images + digests
+sbom.spdx.json            # SPDX 2.3 SBOM: chart + images with pinned digests
 sha256sums.txt            # sha256 of every bundled file (sha256sum -c format)
 load.sh                   # verifies checksums, then loads and pushes every image
 ```
 
 The `images.txt` manifest maps original references to their retagged counterparts and records the resolved manifest digest (`sha256:...`, or `-` when the registry reported none) of exactly what was bundled, making it easy to script and verify the import side on airgapped infrastructure.
+
+An SPDX 2.3 JSON SBOM (`sbom.spdx.json`) lists the chart and every image with its pinned manifest digest, for ingestion into standard SBOM tooling on the airgapped side.
 
 On the airgapped side, extract the bundle and run the generated `load.sh` to load every image into your container engine and push it to the target registry:
 

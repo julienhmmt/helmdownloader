@@ -28,6 +28,16 @@ func (s *stringSlice) Set(v string) error {
 }
 
 func main() {
+	if len(os.Args) >= 2 {
+		switch os.Args[1] {
+		case "verify":
+			runVerify(os.Args[2:])
+			return
+		case "diff":
+			runDiff(os.Args[2:])
+			return
+		}
+	}
 	var valuesFiles, setValues stringSlice
 	flag.Var(&valuesFiles, "values", "extra values file for image discovery (repeatable)")
 	flag.Var(&setValues, "set", "values override key=value for image discovery (repeatable)")
@@ -39,12 +49,15 @@ func main() {
 	prefix := flag.String("registry-prefix", "", "override the private registry prefix")
 	platform := flag.String("platform", "", "override the image platform (e.g. linux/amd64)")
 	resume := flag.Bool("resume", false, "reuse image tarballs already present in a persistent work dir")
+	registryAuth := flag.Bool("registry-auth", false, "enable authenticated pulls from private registries using the default Docker keychain ($DOCKER_CONFIG or ~/.docker/config.json)")
 	compression := flag.String("compression", "", "bundle compression: gzip (default) or zstd")
 	minFreeDiskMB := flag.Int("min-free-mb", -1, "minimum free disk space in MiB before download (0 disables)")
 	proxy := flag.String("proxy", "", "override proxy URL (e.g. http://proxy.domain.local:3128)")
 	verbose := flag.Bool("v", false, "enable verbose logging (shortcut for --log-level=debug)")
 	logLevel := flag.String("log-level", "", "set log level: silent, info, or debug (default: info)")
 	logFile := flag.String("log-file", "helmdownloader.log", "path for log output")
+	exportImages := flag.String("export-images", "", "write the discovered image list (JSON) to this path after rendering, for security review")
+	importImages := flag.String("import-images", "", "read an approved image list (JSON) from this path at download time, overriding the discovered set")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)
@@ -79,6 +92,9 @@ func main() {
 	if *resume {
 		cfg.Resume = true
 	}
+	if *registryAuth {
+		cfg.RegistryAuth = true
+	}
 	if *compression != "" {
 		cfg.Compression = *compression
 	}
@@ -106,6 +122,12 @@ func main() {
 	}
 	if cfg.LogFile == "" {
 		cfg.LogFile = *logFile
+	}
+	if *exportImages != "" {
+		cfg.ExportImages = *exportImages
+	}
+	if *importImages != "" {
+		cfg.ImportImages = *importImages
 	}
 
 	if err := bundle.ValidateCompression(cfg.Compression); err != nil {
@@ -153,4 +175,54 @@ func parseLogLevel(level string) log.Level {
 		fmt.Fprintf(os.Stderr, "warning: unknown log level %q, using info\n", level)
 		return log.LevelInfo
 	}
+}
+
+// runVerify runs the verify subcommand: `helmdownloader verify <bundle>`.
+func runVerify(args []string) {
+	if len(args) != 1 {
+		fmt.Fprintf(os.Stderr, "usage: helmdownloader verify <bundle.tar.gz>\n")
+		os.Exit(2)
+	}
+	if err := bundle.Verify(args[0]); err != nil {
+		fmt.Fprintf(os.Stderr, "verify: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("ok: %s is intact\n", args[0])
+}
+
+// runDiff runs the diff subcommand: `helmdownloader diff <a> <b>`.
+func runDiff(args []string) {
+	if len(args) != 2 {
+		fmt.Fprintf(os.Stderr, "usage: helmdownloader diff <bundle-a> <bundle-b>\n")
+		os.Exit(2)
+	}
+	result, err := bundle.Diff(args[0], args[1])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "diff: %v\n", err)
+		os.Exit(1)
+	}
+	printDiff(result)
+}
+
+func printDiff(r bundle.DiffResult) {
+	if len(r.Added) == 0 && len(r.Removed) == 0 && len(r.Changed) == 0 {
+		fmt.Println("no image differences")
+		return
+	}
+	for _, ref := range r.Added {
+		fmt.Printf("+ %s\n", ref)
+	}
+	for _, ref := range r.Removed {
+		fmt.Printf("- %s\n", ref)
+	}
+	for _, c := range r.Changed {
+		fmt.Printf("~ %s\n    %s -> %s\n", c.Ref, digestOrNone(c.FromDigest), digestOrNone(c.ToDigest))
+	}
+}
+
+func digestOrNone(d string) string {
+	if d == "" {
+		return "(none)"
+	}
+	return d
 }

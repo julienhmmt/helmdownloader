@@ -8,9 +8,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/julienhmmt/helmdownloader/pkg/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/julienhmmt/helmdownloader/pkg/log"
 )
 
 func TestNew_DefaultsBinary(t *testing.T) {

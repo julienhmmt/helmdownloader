@@ -5,8 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/julienhmmt/helmdownloader/pkg/log"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/julienhmmt/helmdownloader/pkg/log"
 )
 
 func TestLogger_Infof(t *testing.T) {
@@ -46,7 +47,7 @@ func TestLogger_SilentDropsEverything(t *testing.T) {
 	assert.Empty(t, buf.String())
 }
 
-func TestLogger_Discard(t *testing.T) {
+func TestLogger_Discard(_ *testing.T) {
 	l := log.Discard()
 	l.Infof("info")
 	l.Debugf("debug")

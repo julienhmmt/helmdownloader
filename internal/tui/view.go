@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -105,7 +106,9 @@ func (m model) viewAddImage() string {
 	return m.screen("Add an image reference", "", m.addInput.View(), "enter add · esc cancel")
 }
 
-// viewDownloading renders the download progress screen.
+// viewDownloading renders the download progress screen: an aggregate bar
+// for completed images, plus a per-image mini bar for each in-flight pull
+// so the user can see all concurrent downloads advancing.
 func (m model) viewDownloading() string {
 	percent := 0.0
 	if m.downTotal > 0 {
@@ -115,18 +118,24 @@ func (m model) viewDownloading() string {
 	lines := []string{
 		fmt.Sprintf("%s  %d/%d", m.progress.ViewAs(percent), m.downCurrent, m.downTotal),
 		"",
-		fmt.Sprintf("%s %s", m.spinner.View(), m.downRef),
 	}
 
-	// Show byte-level progress for the in-flight image when available.
-	if m.downWritten > 0 {
-		if m.downSize > 0 {
-			lines = append(lines, m.styles.subtle.Render(
-				fmt.Sprintf("%s / %s", humanBytes(m.downWritten), humanBytes(m.downSize))))
-		} else {
-			lines = append(lines, m.styles.subtle.Render(humanBytes(m.downWritten)))
-		}
+	// Render up to a screenful of in-flight images, each with a mini bar.
+	// Sort refs for stable display (map iteration order is random).
+	refs := make([]string, 0, len(m.imageProgress))
+	for ref := range m.imageProgress {
+		refs = append(refs, ref)
 	}
+	sort.Strings(refs)
+	for _, ref := range refs {
+		p := m.imageProgress[ref]
+		lines = append(lines, fmt.Sprintf("%s %s %s",
+			m.miniBar(p.written, p.total, 20), ref, m.byteLabel(p.written, p.total)))
+	}
+	if len(refs) == 0 {
+		lines = append(lines, m.styles.subtle.Render(fmt.Sprintf("%s waiting for first bytes…", m.spinner.View())))
+	}
+
 	if len(m.failures) > 0 {
 		lines = append(lines, m.styles.errorMsg.Render(
 			fmt.Sprintf("%d failed so far", len(m.failures))))
@@ -134,6 +143,37 @@ func (m model) viewDownloading() string {
 
 	body := lipgloss.JoinVertical(lipgloss.Left, lines...)
 	return m.screen("Downloading images", "", body, "saving image tarballs, please wait…")
+}
+
+// miniBar renders a width-cell ASCII progress bar for (written/total).
+// When total is 0 or unknown, it renders an indeterminate spinner-ish bar.
+func (m model) miniBar(written, total int64, width int) string {
+	if total <= 0 {
+		// Indeterminate: fill proportionally to written but cap at width,
+		// so the user sees motion without a false percentage.
+		fill := int(written / (1024 * 1024)) // 1 cell per MiB written
+		if fill > width {
+			fill = width
+		}
+		return m.styles.subtle.Render("[" + strings.Repeat("=", fill) + strings.Repeat(" ", width-fill) + "]")
+	}
+	if written > total {
+		written = total
+	}
+	fill := int(float64(width) * float64(written) / float64(total))
+	if fill > width {
+		fill = width
+	}
+	return "[" + strings.Repeat("=", fill) + strings.Repeat(" ", width-fill) + "]"
+}
+
+// byteLabel renders "written / total" (human-readable) or just "written"
+// when total is unknown.
+func (m model) byteLabel(written, total int64) string {
+	if total > 0 {
+		return m.styles.subtle.Render(fmt.Sprintf("%s / %s", humanBytes(written), humanBytes(total)))
+	}
+	return m.styles.subtle.Render(humanBytes(written))
 }
 
 // viewBundling renders the brief archive-assembly step.
