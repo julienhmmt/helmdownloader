@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sync"
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
@@ -54,6 +55,15 @@ type Puller struct {
 	proxy    string
 	auth     bool
 	logger   *log.Logger
+	// transport is the proxied http.Transport built once and reused across
+	// every Save call, so the batch shares one warm TLS connection pool instead
+	// of handshaking per image. It is nil when no proxy is configured (crane's
+	// shared default transport is used in that case). initOnce guards the
+	// lazy build so the proxy URL is parsed at most once and the error surfaces
+	// from buildOpts with the same message as before.
+	transport    *http.Transport
+	transportErr error
+	initOnce     sync.Once
 }
 
 // NewPuller returns a Puller that pulls images for the given platform string,
@@ -78,14 +88,10 @@ func (p *Puller) buildOpts(ctx context.Context) ([]crane.Option, error) {
 	}
 	opts := []crane.Option{crane.WithPlatform(platform)}
 	if p.proxy != "" {
-		proxyURL, err := url.Parse(p.proxy)
+		transport, err := p.proxiedTransport()
 		if err != nil {
-			return nil, fmt.Errorf("parse proxy URL %q: %w", p.proxy, err)
+			return nil, err
 		}
-		// Clone the stdlib default transport so we keep its sane timeouts, idle
-		// connection pool, and HTTP/2 support, overriding only the proxy.
-		transport := http.DefaultTransport.(*http.Transport).Clone()
-		transport.Proxy = http.ProxyURL(proxyURL)
 		opts = append(opts, crane.WithTransport(transport))
 	}
 	if p.auth {
@@ -94,6 +100,29 @@ func (p *Puller) buildOpts(ctx context.Context) ([]crane.Option, error) {
 	opts = append(opts, crane.WithContext(ctx))
 	return opts, nil
 }
+
+// proxiedTransport returns the cached proxied http.Transport, building it on
+// first call. It clones the stdlib default transport so we keep its sane
+// timeouts, idle connection pool, and HTTP/2 support, overriding only the
+// proxy. The transport is shared across every Save call so the concurrent
+// batch reuses one warm TLS pool instead of handshaking per image.
+func (p *Puller) proxiedTransport() (*http.Transport, error) {
+	p.initOnce.Do(func() {
+		proxyURL, err := url.Parse(p.proxy)
+		if err != nil {
+			p.transportErr = fmt.Errorf("parse proxy URL %q: %w", p.proxy, err)
+			return
+		}
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.Proxy = http.ProxyURL(proxyURL)
+		p.transport = transport
+	})
+	return p.transport, p.transportErr
+}
+
+// transportForTest exposes the cached proxied transport for test assertions.
+// It is nil when no proxy is configured or before buildOpts has run.
+func (p *Puller) transportForTest() *http.Transport { return p.transport }
 
 // Save pulls srcRef for the configured platform and writes it to destPath as a
 // docker-style tarball, embedding destRef as the image's tag so a later

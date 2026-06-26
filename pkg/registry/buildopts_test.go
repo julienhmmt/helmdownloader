@@ -35,3 +35,17 @@ func TestBuildOpts_BadPlatformErrors(t *testing.T) {
 	_, err := p.buildOpts(context.Background())
 	assert.Error(t, err)
 }
+
+func TestBuildOpts_ProxyTransportReusedAcrossCalls(t *testing.T) {
+	ctx := context.Background()
+	p := NewPuller("linux/amd64", "http://proxy:3128", false, log.Discard())
+	_, err := p.buildOpts(ctx)
+	require.NoError(t, err)
+	first := p.transportForTest()
+	require.NotNil(t, first)
+	_, err = p.buildOpts(ctx)
+	require.NoError(t, err)
+	// The transport is built once and reused, so a second buildOpts call does
+	// not allocate a new one — the batch shares one warm TLS pool.
+	assert.Same(t, first, p.transportForTest())
+}
