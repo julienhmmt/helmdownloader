@@ -29,7 +29,7 @@ func (m model) screen(title, subtitle, body, help string) string {
 	}
 	parts = append(parts, "", body)
 	if help != "" {
-		parts = append(parts, "", m.styles.help.Render(help))
+		parts = append(parts, "", m.renderHelp(help))
 	}
 	return m.frame(lipgloss.JoinVertical(lipgloss.Left, parts...))
 }

@@ -25,6 +25,8 @@ func (m model) render() string {
 		return m.viewBusy()
 	case stateResults:
 		return m.viewList(m.results.View())
+	case stateFilterInput:
+		return m.viewFilterInput()
 	case stateVersions:
 		return m.viewList(m.versions.View())
 	case stateReview:
@@ -66,8 +68,69 @@ func (m model) viewBusy() string {
 
 // viewList renders a bubbles list with a styled footer. List screens are left
 // unframed: the widget manages its own sizing and a border would fight it.
+// On the results screen, a sort/filter status line is shown above the footer.
 func (m model) viewList(body string) string {
-	return body + "\n" + m.styles.help.Render("enter select · / filter · esc back · ctrl+c quit")
+	lines := []string{body}
+	if m.state == stateResults {
+		lines = append(lines, "", m.sortFilterStatus())
+	}
+	lines = append(lines, m.renderHelp(m.listHelp()))
+	return strings.Join(lines, "\n")
+}
+
+// listHelp returns the footer help text for the active list screen. Results
+// uses two lines so the sort/filter controls are grouped separately from the
+// navigation controls, keeping the footer readable on narrow terminals.
+func (m model) listHelp() string {
+	if m.state == stateResults {
+		return "enter select · esc back · ctrl+c quit\n/ filter · s sort · o dir · f filter · F type · tab cycle"
+	}
+	return "enter select · / filter · esc back · ctrl+c quit"
+}
+
+// renderHelp splits a help string on newlines, then on " · ", and renders each
+// segment's key (first token) in the accent color and its label in the muted
+// color. This keeps keybindings discoverable while making the footer recede.
+func (m model) renderHelp(help string) string {
+	lines := strings.Split(help, "\n")
+	rendered := make([]string, len(lines))
+	for i, line := range lines {
+		segments := strings.Split(line, " · ")
+		parts := make([]string, 0, len(segments))
+		for _, seg := range segments {
+			key, label, found := strings.Cut(seg, " ")
+			if !found {
+				parts = append(parts, m.styles.selected.Render(seg))
+				continue
+			}
+			parts = append(parts, m.styles.selected.Render(key)+m.styles.help.Render(" "+label))
+		}
+		rendered[i] = strings.Join(parts, m.styles.faint.Render(" · "))
+	}
+	return strings.Join(rendered, "\n")
+}
+
+// sortFilterStatus renders the current sort and filter settings as one line.
+func (m model) sortFilterStatus() string {
+	sortPart := fmt.Sprintf("sort: %s%s", sortFieldLabel(m.sortField), sortDirSymbol(m.sortDir))
+	filterPart := "filter: off"
+	if m.filterField != filterNone {
+		value := m.filterValue
+		if value == "" {
+			value = "(any)"
+		}
+		filterPart = fmt.Sprintf("filter: %s=%q", filterFieldLabel(m.filterField), value)
+	}
+	count := fmt.Sprintf("%s %s", m.styles.selected.Render(fmt.Sprintf("%d", len(m.visiblePackages()))), m.styles.muted.Render("shown"))
+	sep := m.styles.faint.Render(" · ")
+	return strings.Join([]string{m.styles.muted.Render(sortPart), m.styles.muted.Render(filterPart), count}, sep)
+}
+
+// viewFilterInput renders the filter substring entry prompt.
+func (m model) viewFilterInput() string {
+	title := fmt.Sprintf("Filter by %s", filterFieldLabel(m.filterField))
+	return m.screen(title, "type a substring, tab to cycle values", m.filter.View(),
+		"enter apply · tab cycle · esc cancel")
 }
 
 // viewReview renders the image checklist inside the app frame.
@@ -77,7 +140,7 @@ func (m model) viewReview() string {
 
 	var rows strings.Builder
 	if len(m.reviewImages) == 0 {
-		rows.WriteString(m.styles.subtle.Render("No images discovered. Press 'a' to add one manually."))
+		rows.WriteString(m.styles.muted.Render("No images discovered. Press 'a' to add one manually."))
 	}
 	for index, img := range m.reviewImages {
 		cursor := "  "
@@ -94,7 +157,7 @@ func (m model) viewReview() string {
 		}
 	}
 
-	meta := m.styles.subtle.Render(fmt.Sprintf("prefix %s · platform %s · out %s",
+	meta := m.styles.muted.Render(fmt.Sprintf("prefix %s · platform %s · out %s",
 		m.cfg.RegistryPrefix, m.cfg.Platform, m.cfg.OutputDir))
 	body := lipgloss.JoinVertical(lipgloss.Left, rows.String(), "", meta)
 	return m.screen(title, subtitle, body,
@@ -133,7 +196,7 @@ func (m model) viewDownloading() string {
 			m.miniBar(p.written, p.total, 20), ref, m.byteLabel(p.written, p.total)))
 	}
 	if len(refs) == 0 {
-		lines = append(lines, m.styles.subtle.Render(fmt.Sprintf("%s waiting for first bytes…", m.spinner.View())))
+		lines = append(lines, m.styles.muted.Render(fmt.Sprintf("%s waiting for first bytes…", m.spinner.View())))
 	}
 
 	if len(m.failures) > 0 {
@@ -151,29 +214,32 @@ func (m model) miniBar(written, total int64, width int) string {
 	if total <= 0 {
 		// Indeterminate: fill proportionally to written but cap at width,
 		// so the user sees motion without a false percentage.
-		fill := int(written / (1024 * 1024)) // 1 cell per MiB written
-		if fill > width {
-			fill = width
-		}
-		return m.styles.subtle.Render("[" + strings.Repeat("=", fill) + strings.Repeat(" ", width-fill) + "]")
+		fill := min(int(written/(1024*1024)), width) // 1 cell per MiB written
+		return m.bar(fill, width)
 	}
 	if written > total {
 		written = total
 	}
-	fill := int(float64(width) * float64(written) / float64(total))
-	if fill > width {
-		fill = width
-	}
-	return "[" + strings.Repeat("=", fill) + strings.Repeat(" ", width-fill) + "]"
+	fill := min(int(float64(width)*float64(written)/float64(total)), width)
+	return m.bar(fill, width)
+}
+
+// bar renders a width-cell progress bar with a gold fill on a faint track,
+// bracketed in the faint tone so the bar recedes until it fills.
+func (m model) bar(fill, width int) string {
+	bracket := m.styles.faint
+	filled := m.styles.selected.Render(strings.Repeat("━", fill))
+	track := m.styles.faint.Render(strings.Repeat("─", width-fill))
+	return bracket.Render("[") + filled + track + bracket.Render("]")
 }
 
 // byteLabel renders "written / total" (human-readable) or just "written"
 // when total is unknown.
 func (m model) byteLabel(written, total int64) string {
 	if total > 0 {
-		return m.styles.subtle.Render(fmt.Sprintf("%s / %s", humanBytes(written), humanBytes(total)))
+		return m.styles.muted.Render(fmt.Sprintf("%s / %s", humanBytes(written), humanBytes(total)))
 	}
-	return m.styles.subtle.Render(humanBytes(written))
+	return m.styles.muted.Render(humanBytes(written))
 }
 
 // viewBundling renders the brief archive-assembly step.
@@ -188,13 +254,13 @@ func (m model) viewDownloadReview() string {
 	for index, f := range m.failures {
 		rows.WriteString(m.styles.selected.Render(f.Ref))
 		rows.WriteString("\n")
-		rows.WriteString(m.styles.subtle.Render("  " + errLine(f.Err)))
+		rows.WriteString(m.styles.muted.Render("  " + errLine(f.Err)))
 		if index < len(m.failures)-1 {
 			rows.WriteString("\n")
 		}
 	}
 
-	ok := m.styles.subtle.Render(fmt.Sprintf("%d downloaded successfully", len(m.entries)))
+	ok := m.styles.muted.Render(fmt.Sprintf("%d downloaded successfully", len(m.entries)))
 	footer := "r retry failed · q abort"
 	if len(m.entries) > 0 {
 		footer = fmt.Sprintf("r retry failed · c continue with %d · q abort", len(m.entries))
@@ -207,7 +273,7 @@ func (m model) viewDownloadReview() string {
 		"",
 		ok,
 		"",
-		m.styles.help.Render(footer),
+		m.renderHelp(footer),
 	)
 	return m.frame(body)
 }
@@ -245,7 +311,7 @@ func (m model) viewDone() string {
 		lines = append(lines, m.styles.errorMsg.Render(
 			fmt.Sprintf("%d image(s) failed and were skipped", len(m.failures))))
 	}
-	lines = append(lines, "", m.styles.help.Render("n new bundle · q quit"))
+	lines = append(lines, "", m.renderHelp("n new bundle · q quit"))
 	return m.frame(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }
 
@@ -255,6 +321,6 @@ func (m model) viewError() string {
 	if m.err != nil {
 		lines = append(lines, m.err.Error())
 	}
-	lines = append(lines, "", m.styles.help.Render("n new bundle · q quit"))
+	lines = append(lines, "", m.renderHelp("n new bundle · q quit"))
 	return m.frame(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }

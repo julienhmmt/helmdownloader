@@ -24,15 +24,20 @@ const maxArtifactHubBody = 16 << 20
 
 // Package is a single Helm chart entry returned by a search.
 type Package struct {
-	Name        string
-	RepoName    string
-	RepoURL     string
-	Version     string
-	AppVersion  string
-	Description string
-	Stars       int
-	Official    bool
-	Deprecated  bool
+	Name                    string
+	RepoName                string
+	RepoDisplayName         string
+	RepoURL                 string
+	Version                 string
+	AppVersion              string
+	Description             string
+	Stars                   int
+	Official                bool
+	Deprecated              bool
+	Author                  string // repository.user_alias — the user who owns the repo
+	Organization            string // repository.organization_name — the publishing org/company
+	OrganizationDisplayName string // repository.organization_display_name
+	LastUpdated             int64  // package ts — last publish/update timestamp
 }
 
 // IsOCI reports whether the chart is hosted in an OCI registry.
@@ -130,9 +135,13 @@ type searchResponse struct {
 }
 
 type rawRepository struct {
-	Name     string `json:"name"`
-	URL      string `json:"url"`
-	Official bool   `json:"official"`
+	Name                    string `json:"name"`
+	DisplayName             string `json:"display_name"`
+	URL                     string `json:"url"`
+	Official                bool   `json:"official"`
+	UserAlias               string `json:"user_alias"`
+	OrganizationName        string `json:"organization_name"`
+	OrganizationDisplayName string `json:"organization_display_name"`
 }
 
 type rawPackage struct {
@@ -142,20 +151,26 @@ type rawPackage struct {
 	Description string        `json:"description"`
 	Stars       int           `json:"stars"`
 	Deprecated  bool          `json:"deprecated"`
+	Timestamp   int64         `json:"ts"`
 	Repository  rawRepository `json:"repository"`
 }
 
 func (r rawPackage) toPackage() Package {
 	return Package{
-		Name:        r.Name,
-		RepoName:    r.Repository.Name,
-		RepoURL:     r.Repository.URL,
-		Version:     r.Version,
-		AppVersion:  r.AppVersion,
-		Description: r.Description,
-		Stars:       r.Stars,
-		Official:    r.Repository.Official,
-		Deprecated:  r.Deprecated,
+		Name:                    r.Name,
+		RepoName:                r.Repository.Name,
+		RepoDisplayName:         r.Repository.DisplayName,
+		RepoURL:                 r.Repository.URL,
+		Version:                 r.Version,
+		AppVersion:              r.AppVersion,
+		Description:             r.Description,
+		Stars:                   r.Stars,
+		Official:                r.Repository.Official,
+		Deprecated:              r.Deprecated,
+		Author:                  r.Repository.UserAlias,
+		Organization:            r.Repository.OrganizationName,
+		OrganizationDisplayName: r.Repository.OrganizationDisplayName,
+		LastUpdated:             r.Timestamp,
 	}
 }
 

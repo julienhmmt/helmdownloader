@@ -36,9 +36,9 @@ func TestViewRendersEveryScreen(t *testing.T) {
 	base.err = errors.New("boom")
 
 	states := []state{
-		stateSearch, stateSearching, statePreparing, stateResults, stateVersions,
-		stateReview, stateAddImage, stateDownloading, stateDownloadReview,
-		stateBundling, stateDone, stateError,
+		stateSearch, stateSearching, statePreparing, stateResults, stateFilterInput,
+		stateVersions, stateReview, stateAddImage, stateDownloading,
+		stateDownloadReview, stateBundling, stateDone, stateError,
 	}
 	for _, s := range states {
 		m := base
@@ -61,6 +61,72 @@ func TestViewReviewShowsSelectionAndCursor(t *testing.T) {
 	assert.Contains(t, out, "argo-cd")
 	assert.Contains(t, out, "1 selected of 1")
 	assert.Contains(t, out, "quay.io/argoproj/argocd:v2.9.3")
+}
+
+func TestViewResultsShowsSortFilterStatus(t *testing.T) {
+	m := newTestModel()
+	m.state = stateResults
+	m.allPackages = []artifacthub.Package{
+		{Name: "argo-cd", Stars: 200, Author: "jdoe", Organization: "argoproj"},
+		{Name: "redis", Stars: 50, Author: "bitnami", Organization: "bitnami"},
+	}
+	m.sortField = sortStars
+	m.sortDir = sortDesc
+	m.filterField = filterAuthor
+	m.filterValue = "bit"
+	m.results.SetItems(packagesToItems(m.visiblePackages()))
+
+	out := m.render()
+	assert.Contains(t, out, "sort: stars↓")
+	assert.Contains(t, out, "filter: author=\"bit\"")
+	// The count number is accent-styled, so it's split by ANSI codes from
+	// "shown" — check both parts independently.
+	assert.Contains(t, out, "shown")
+	assert.Contains(t, out, "sort:")
+}
+
+func TestViewResultsShowsFilterOff(t *testing.T) {
+	m := newTestModel()
+	m.state = stateResults
+	m.allPackages = []artifacthub.Package{{Name: "argo-cd", Stars: 200}}
+	m.sortField = sortName
+	m.sortDir = sortAsc
+	m.filterField = filterNone
+	m.results.SetItems(packagesToItems(m.visiblePackages()))
+
+	out := m.render()
+	assert.Contains(t, out, "sort: name↑")
+	assert.Contains(t, out, "filter: off")
+}
+
+func TestViewFilterInputShowsPrompt(t *testing.T) {
+	m := newTestModel()
+	m.state = stateFilterInput
+	m.filterField = filterCompany
+	out := m.render()
+	assert.Contains(t, out, "Filter by company")
+	// "tab" and "cycle" are styled separately by renderHelp, so check
+	// each token independently rather than as a contiguous substring.
+	assert.Contains(t, out, "tab")
+	assert.Contains(t, out, "cycle")
+}
+
+func TestRenderHelp_HighlightsKeys(t *testing.T) {
+	m := newTestModel()
+	out := m.renderHelp("enter select · q quit")
+	// Keys are rendered in the accent (selected) style, labels in secondary.
+	// Both tokens must be present; the "·" separator must also be present.
+	assert.Contains(t, out, "enter")
+	assert.Contains(t, out, "select")
+	assert.Contains(t, out, "q")
+	assert.Contains(t, out, "quit")
+	assert.Contains(t, out, "·")
+}
+
+func TestRenderHelp_SingleToken(t *testing.T) {
+	m := newTestModel()
+	out := m.renderHelp("q")
+	assert.Contains(t, out, "q")
 }
 
 func TestFrameCentersWhenSized(t *testing.T) {
@@ -89,32 +155,45 @@ func TestHumanBytes(t *testing.T) {
 	}
 }
 
+// stripANSI removes SGR escape sequences so a styled bar can be compared by
+// its visible glyphs. The bar fills with "━" and leaves a "─" track.
+func stripANSI(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == 0x1b {
+			for i < len(s) && s[i] != 'm' {
+				i++
+			}
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
 func TestMiniBar_Determinate(t *testing.T) {
 	m := newModel(config.Default(), log.Discard())
-	bar := m.miniBar(5, 10, 10)
-	assert.Equal(t, "[=====     ]", bar)
+	bar := stripANSI(m.miniBar(5, 10, 10))
+	assert.Equal(t, "[━━━━━─────]", bar)
 }
 
 func TestMiniBar_Full(t *testing.T) {
 	m := newModel(config.Default(), log.Discard())
-	bar := m.miniBar(10, 10, 10)
-	assert.Equal(t, "[==========]", bar)
+	bar := stripANSI(m.miniBar(10, 10, 10))
+	assert.Equal(t, "[━━━━━━━━━━]", bar)
 }
 
 func TestMiniBar_OverFillClamps(t *testing.T) {
 	m := newModel(config.Default(), log.Discard())
-	bar := m.miniBar(20, 10, 10)
-	assert.Equal(t, "[==========]", bar)
+	bar := stripANSI(m.miniBar(20, 10, 10))
+	assert.Equal(t, "[━━━━━━━━━━]", bar)
 }
 
 func TestMiniBar_Indeterminate(t *testing.T) {
 	m := newModel(config.Default(), log.Discard())
 	// 1 cell per MiB; 5 MiB written -> 5 cells of a 10-cell bar.
-	bar := m.miniBar(5*1024*1024, 0, 10)
-	// The bar is styled with subtle; assert on the visible structure by
-	// checking Contains, since the exact styled string includes escape codes.
-	assert.Contains(t, bar, "[=====")
-	assert.Contains(t, bar, "     ]")
+	bar := stripANSI(m.miniBar(5*1024*1024, 0, 10))
+	assert.Equal(t, "[━━━━━─────]", bar)
 }
 
 func TestByteLabel_WithTotal(t *testing.T) {

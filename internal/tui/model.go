@@ -26,6 +26,7 @@ const (
 	stateSearch state = iota
 	stateSearching
 	stateResults
+	stateFilterInput
 	stateVersions
 	statePreparing
 	stateReview
@@ -64,8 +65,18 @@ type model struct {
 	progress progress.Model
 	search   textinput.Model
 	addInput textinput.Model
+	filter   textinput.Model
 	results  list.Model
 	versions list.Model
+
+	// allPackages holds the raw search results; the results list shows the
+	// sort/filter projection of this slice. Keeping the raw set lets the user
+	// change sort/filter without re-querying ArtifactHub.
+	allPackages []artifacthub.Package
+	sortField   sortField
+	sortDir     sortDir
+	filterField filterField
+	filterValue string // substring typed in the filter input
 
 	selectedPkg     artifacthub.Package
 	selectedVersion string
@@ -93,7 +104,7 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 	spin.Style = lipgloss.NewStyle().Foreground(colorAccent)
 
 	prog := progress.New(
-		progress.WithColors(lipgloss.Color("#C8863C"), lipgloss.Color("#E6B864")),
+		progress.WithColors(lipgloss.Color("#B8902E"), lipgloss.Color("#E6C766")),
 		progress.WithWidth(60),
 	)
 
@@ -106,17 +117,23 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 	add.Placeholder = "registry/repo:tag"
 	add.CharLimit = 200
 
+	filter := textinput.New()
+	filter.Placeholder = "substring (e.g. bitnami, argo)…"
+	filter.CharLimit = 100
+
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(colorAccent).Padding(0, 1)
 
 	chartDelegate := list.NewDefaultDelegate()
-	chartDelegate.Styles = warmDelegateStyles()
+	chartDelegate.Styles = chartDelegateStyles()
+	chartDelegate.SetSpacing(1)
 	resultsList := list.New(nil, chartDelegate, 0, 0)
 	resultsList.Title = "Charts"
 	resultsList.SetShowHelp(false)
 	resultsList.Styles.Title = titleStyle
 
 	versionDelegate := list.NewDefaultDelegate()
-	versionDelegate.Styles = warmDelegateStyles()
+	versionDelegate.Styles = chartDelegateStyles()
+	versionDelegate.SetSpacing(1)
 	versionsList := list.New(nil, versionDelegate, 0, 0)
 	versionsList.Title = "Versions"
 	versionsList.SetShowHelp(false)
@@ -137,10 +154,13 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 		progress:      prog,
 		search:        search,
 		addInput:      add,
+		filter:        filter,
 		results:       resultsList,
 		versions:      versionsList,
 		activity:      make(chan tea.Msg, 16),
 		imageProgress: map[string]imageProgress{},
+		sortField:     sortStars,
+		sortDir:       sortDesc,
 	}
 }
 

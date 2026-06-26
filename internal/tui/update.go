@@ -2,10 +2,12 @@ package tui
 
 import (
 	"context"
+	"fmt"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
 	"github.com/julienhmmt/helmdownloader/pkg/images"
 	"github.com/julienhmmt/helmdownloader/pkg/pipeline"
 )
@@ -23,7 +25,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKey(typed)
 	case searchResultMsg:
 		m.state = stateResults
-		m.results.SetItems(packagesToItems(typed.packages))
+		m.allPackages = typed.packages
+		m.filterField = filterNone
+		m.filterValue = ""
+		m.refreshResults()
 		return m, nil
 	case versionsMsg:
 		m.state = stateVersions
@@ -81,6 +86,8 @@ func (m model) updateComponents(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.search, cmd = m.search.Update(msg)
 	case stateAddImage:
 		m.addInput, cmd = m.addInput.Update(msg)
+	case stateFilterInput:
+		m.filter, cmd = m.filter.Update(msg)
 	case stateResults:
 		m.results, cmd = m.results.Update(msg)
 	case stateVersions:
@@ -101,6 +108,8 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleSearchKey(msg)
 	case stateResults:
 		return m.handleResultsKey(msg)
+	case stateFilterInput:
+		return m.handleFilterInputKey(msg)
 	case stateVersions:
 		return m.handleVersionsKey(msg)
 	case stateReview:
@@ -132,7 +141,7 @@ func (m model) handleSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m.updateComponents(msg)
 }
 
-// handleResultsKey processes selection on the results screen.
+// handleResultsKey processes selection and sort/filter on the results screen.
 func (m model) handleResultsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.results.FilterState() == list.Filtering { // let the list consume keys while filtering
 		return m.updateComponents(msg)
@@ -149,8 +158,88 @@ func (m model) handleResultsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.selectedPkg = item.pkg
 		m.state = stateSearching
 		return m, tea.Batch(m.spinner.Tick, versionsCmd(m.ctx, m.client, item.pkg))
+	case "s": // cycle sort field: stars → name → updated → stars
+		m.sortField = cycleSortField(m.sortField)
+		m.refreshResults()
+		return m, nil
+	case "o": // toggle sort direction asc/desc
+		m.sortDir = toggleSortDir(m.sortDir)
+		m.refreshResults()
+		return m, nil
+	case "f": // cycle filter field: off → author → company → off
+		m.filterField = cycleFilterField(m.filterField)
+		m.filterValue = ""
+		m.refreshResults()
+		return m, nil
+	case "F": // open the filter substring input
+		if m.filterField == filterNone {
+			m.filterField = filterAuthor // default to author when opening
+		}
+		m.filter.SetValue(m.filterValue)
+		m.filter.Focus()
+		m.state = stateFilterInput
+		return m, nil
+	case "tab": // cycle through unique values for the active filter field
+		m.cycleFilterValue()
+		m.refreshResults()
+		return m, nil
 	}
 	return m.updateComponents(msg)
+}
+
+// handleFilterInputKey processes the filter substring input screen.
+func (m model) handleFilterInputKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		m.filterValue = m.filter.Value()
+		m.filter.Blur()
+		m.state = stateResults
+		m.refreshResults()
+		return m, nil
+	case "esc":
+		m.filter.Blur()
+		m.state = stateResults
+		return m, nil
+	case "tab":
+		m.cycleFilterValue()
+		m.filter.SetValue(m.filterValue)
+		return m, nil
+	}
+	return m.updateComponents(msg)
+}
+
+// cycleFilterValue advances the current filter value to the next unique
+// author or company present in the raw search results.
+func (m *model) cycleFilterValue() {
+	switch m.filterField {
+	case filterAuthor:
+		m.filterValue = nextUniqueValue(uniqueAuthors(m.allPackages), m.filterValue)
+	case filterCompany:
+		m.filterValue = nextUniqueValue(uniqueCompanies(m.allPackages), m.filterValue)
+	default:
+		m.filterValue = ""
+	}
+}
+
+// refreshResults reprojects allPackages through the current sort/filter and
+// updates the list items in place.
+func (m *model) refreshResults() {
+	items := packagesToItems(m.visiblePackages())
+	m.results.SetItems(items)
+	m.results.Title = fmt.Sprintf("Charts · %d", len(items))
+}
+
+// visiblePackages returns allPackages sorted and filtered by the current
+// sort/filter settings.
+func (m model) visiblePackages() []artifacthub.Package {
+	author, company := "", ""
+	switch m.filterField {
+	case filterAuthor:
+		author = m.filterValue
+	case filterCompany:
+		company = m.filterValue
+	}
+	return applySortFilter(m.allPackages, m.sortField, m.sortDir, author, company)
 }
 
 // handleVersionsKey processes selection on the versions screen.

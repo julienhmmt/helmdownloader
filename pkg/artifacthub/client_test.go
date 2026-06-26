@@ -24,8 +24,9 @@ func TestSearch_ParsesPackages(t *testing.T) {
 		assert.Equal(t, "0", r.URL.Query().Get("kind"))
 		assert.Equal(t, "argo-cd", r.URL.Query().Get("ts_query_web"))
 		_, _ = w.Write([]byte(`{"packages":[
-			{"name":"argo-cd","version":"5.0.0","app_version":"v2","description":"d","stars":42,"deprecated":false,
-			 "repository":{"name":"argo","url":"https://argoproj.github.io/argo-helm","official":true}}
+			{"name":"argo-cd","version":"5.0.0","app_version":"v2","description":"d","stars":42,"deprecated":false,"ts":1700000000,
+			 "repository":{"name":"argo","display_name":"Argo","url":"https://argoproj.github.io/argo-helm","official":true,
+			  "user_alias":"jdoe","organization_name":"argoproj","organization_display_name":"Argo Project"}}
 		]}`))
 	}))
 	defer srv.Close()
@@ -36,9 +37,14 @@ func TestSearch_ParsesPackages(t *testing.T) {
 	require.Len(t, pkgs, 1)
 	assert.Equal(t, "argo-cd", pkgs[0].Name)
 	assert.Equal(t, "argo", pkgs[0].RepoName)
+	assert.Equal(t, "Argo", pkgs[0].RepoDisplayName)
 	assert.Equal(t, "https://argoproj.github.io/argo-helm", pkgs[0].RepoURL)
 	assert.Equal(t, 42, pkgs[0].Stars)
 	assert.True(t, pkgs[0].Official)
+	assert.Equal(t, "jdoe", pkgs[0].Author)
+	assert.Equal(t, "argoproj", pkgs[0].Organization)
+	assert.Equal(t, "Argo Project", pkgs[0].OrganizationDisplayName)
+	assert.Equal(t, int64(1700000000), pkgs[0].LastUpdated)
 }
 
 func TestVersions_ParsesAndEscapesPath(t *testing.T) {
