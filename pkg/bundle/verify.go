@@ -16,56 +16,44 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-// readBundle opens a bundle archive (.tar.gz or .tar.zst) and returns a map
-// of entry name to content bytes. The codec is selected from the file
-// extension. Entries are read fully into memory; bundles are small enough
-// (chart + image tars are already on disk elsewhere) that this is fine for
-// the verify/diff metadata-only use case.
-func readBundle(path string) (map[string][]byte, error) {
+// openBundleStream opens a bundle archive (.tar.gz or .tar.zst) and returns a
+// reader over the decompressed tar stream plus a cleanup function that closes
+// the underlying file and decompressor. The codec is selected from the file
+// extension. Callers iterate the tar stream once; entries are not buffered, so
+// memory stays bounded regardless of bundle size.
+func openBundleStream(path string) (io.Reader, func(), error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("open bundle: %w", err)
+		return nil, nil, fmt.Errorf("open bundle: %w", err)
 	}
-	defer func() { _ = f.Close() }()
 	var stream io.Reader
+	var (
+		gz  *gzip.Reader
+		zr  *zstd.Decoder
+		cln = func() { _ = f.Close() }
+	)
 	switch {
 	case strings.HasSuffix(path, ".gz") || strings.HasSuffix(path, ".tgz"):
-		gz, err := gzip.NewReader(f)
+		gz, err = gzip.NewReader(f)
 		if err != nil {
-			return nil, fmt.Errorf("read gzip: %w", err)
+			cln()
+			return nil, nil, fmt.Errorf("read gzip: %w", err)
 		}
-		defer func() { _ = gz.Close() }()
 		stream = gz
+		cln = func() { _ = gz.Close(); _ = f.Close() }
 	case strings.HasSuffix(path, ".zst"):
-		zr, err := zstd.NewReader(f)
+		zr, err = zstd.NewReader(f)
 		if err != nil {
-			return nil, fmt.Errorf("read zstd: %w", err)
+			cln()
+			return nil, nil, fmt.Errorf("read zstd: %w", err)
 		}
-		defer zr.Close()
 		stream = zr
+		cln = func() { zr.Close(); _ = f.Close() }
 	default:
-		return nil, fmt.Errorf("unknown bundle extension %q (want .tar.gz or .tar.zst)", path)
+		cln()
+		return nil, nil, fmt.Errorf("unknown bundle extension %q (want .tar.gz or .tar.zst)", path)
 	}
-	entries := map[string][]byte{}
-	tr := tar.NewReader(stream)
-	for {
-		hdr, err := tr.Next()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("read tar: %w", err)
-		}
-		if hdr.Typeflag != tar.TypeReg {
-			continue
-		}
-		data, err := io.ReadAll(tr)
-		if err != nil {
-			return nil, fmt.Errorf("read entry %s: %w", hdr.Name, err)
-		}
-		entries[hdr.Name] = data
-	}
-	return entries, nil
+	return stream, cln, nil
 }
 
 // Verify checks a bundle's integrity: every file listed in sha256sums.txt
@@ -73,47 +61,95 @@ func readBundle(path string) (map[string][]byte, error) {
 // well-formed and its image entries have recorded digests. It does not
 // re-pull images or contact any registry. Returns nil if the bundle is
 // intact, or an error listing the first problem found.
+//
+// The bundle is streamed in a single pass: each regular tar entry is hashed
+// on the fly (only its 64-byte hex digest is kept, never its contents), so
+// memory stays bounded regardless of bundle size. sha256sums.txt and
+// manifest.json are small metadata files held in memory for parsing.
 func Verify(path string) error {
-	entries, err := readBundle(path)
+	stream, cln, err := openBundleStream(path)
 	if err != nil {
 		return err
 	}
-	sums, ok := entries["sha256sums.txt"]
-	if !ok {
+	defer cln()
+	// digests maps every regular entry name to its sha256 hex digest. Only the
+	// digest is retained, so a multi-GB image tar costs 64 bytes here.
+	digests := map[string]string{}
+	var sumsBytes, manifestBytes []byte
+	tr := tar.NewReader(stream)
+	for {
+		hdr, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("read tar: %w", err)
+		}
+		if hdr.Typeflag != tar.TypeReg {
+			continue
+		}
+		switch hdr.Name {
+		case "sha256sums.txt":
+			data, err := io.ReadAll(tr)
+			if err != nil {
+				return fmt.Errorf("read sha256sums.txt: %w", err)
+			}
+			sumsBytes = data
+			digests[hdr.Name] = hexSha256(data)
+		case "manifest.json":
+			data, err := io.ReadAll(tr)
+			if err != nil {
+				return fmt.Errorf("read manifest.json: %w", err)
+			}
+			manifestBytes = data
+			digests[hdr.Name] = hexSha256(data)
+		default:
+			h := sha256.New()
+			if _, err := io.Copy(h, tr); err != nil {
+				return fmt.Errorf("read entry %s: %w", hdr.Name, err)
+			}
+			digests[hdr.Name] = hex.EncodeToString(h.Sum(nil))
+		}
+	}
+	if sumsBytes == nil {
 		return errors.New("bundle missing sha256sums.txt")
 	}
 	var mismatched []string
-	for line := range strings.SplitSeq(strings.TrimRight(string(sums), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(sumsBytes), "\n"), "\n") {
 		parts := strings.SplitN(line, "  ", 2)
 		if len(parts) != 2 {
 			return fmt.Errorf("malformed checksum line %q", line)
 		}
 		wantHex, name := parts[0], parts[1]
-		content, ok := entries[name]
+		gotHex, ok := digests[name]
 		if !ok {
 			mismatched = append(mismatched, name+" (missing from archive)")
 			continue
 		}
-		sum := sha256.Sum256(content)
-		if hex.EncodeToString(sum[:]) != wantHex {
+		if gotHex != wantHex {
 			mismatched = append(mismatched, name+" (checksum mismatch)")
 		}
 	}
-	if prov, ok := entries["manifest.json"]; ok {
-		var p provenance
-		if err := json.Unmarshal(prov, &p); err != nil {
-			return fmt.Errorf("parse manifest.json: %w", err)
-		}
-		if p.Tool != tool {
-			return fmt.Errorf("manifest.json tool %q != expected %q", p.Tool, tool)
-		}
-	} else {
+	if manifestBytes == nil {
 		return errors.New("bundle missing manifest.json")
+	}
+	var p provenance
+	if err := json.Unmarshal(manifestBytes, &p); err != nil {
+		return fmt.Errorf("parse manifest.json: %w", err)
+	}
+	if p.Tool != tool {
+		return fmt.Errorf("manifest.json tool %q != expected %q", p.Tool, tool)
 	}
 	if len(mismatched) > 0 {
 		return fmt.Errorf("bundle verification failed:\n  %s", strings.Join(mismatched, "\n  "))
 	}
 	return nil
+}
+
+// hexSha256 returns the hex-encoded sha256 of data.
+func hexSha256(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 // DiffResult describes the image-level differences between two bundles.
@@ -132,7 +168,8 @@ type DiffChange struct {
 
 // Diff compares the image sets of two bundles (by source reference and
 // pinned digest) and returns the differences. It reads only manifest.json
-// from each bundle; file contents are not compared.
+// from each bundle by streaming the archive and stopping as soon as
+// manifest.json is found; image tar contents are never read into memory.
 func Diff(aPath, bPath string) (DiffResult, error) {
 	aImages, err := readManifestImages(aPath)
 	if err != nil {
@@ -161,24 +198,40 @@ func Diff(aPath, bPath string) (DiffResult, error) {
 	return result, nil
 }
 
-// readManifestImages reads a bundle's manifest.json and returns a map of
-// image source-ref → digest (digest is "" when the registry reported none).
+// readManifestImages streams a bundle and returns a map of image source-ref →
+// digest (digest is "" when the registry reported none), reading only
+// manifest.json. Image tar entries are skipped without buffering.
 func readManifestImages(path string) (map[string]string, error) {
-	entries, err := readBundle(path)
+	stream, cln, err := openBundleStream(path)
 	if err != nil {
 		return nil, err
 	}
-	prov, ok := entries["manifest.json"]
-	if !ok {
-		return nil, errors.New("missing manifest.json")
+	defer cln()
+	tr := tar.NewReader(stream)
+	for {
+		hdr, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read tar: %w", err)
+		}
+		if hdr.Typeflag != tar.TypeReg || hdr.Name != "manifest.json" {
+			continue
+		}
+		prov, err := io.ReadAll(tr)
+		if err != nil {
+			return nil, fmt.Errorf("read manifest.json: %w", err)
+		}
+		var p provenance
+		if err := json.Unmarshal(prov, &p); err != nil {
+			return nil, fmt.Errorf("parse manifest.json: %w", err)
+		}
+		m := make(map[string]string, len(p.Images))
+		for _, img := range p.Images {
+			m[img.Source] = img.Digest
+		}
+		return m, nil
 	}
-	var p provenance
-	if err := json.Unmarshal(prov, &p); err != nil {
-		return nil, fmt.Errorf("parse manifest.json: %w", err)
-	}
-	m := make(map[string]string, len(p.Images))
-	for _, img := range p.Images {
-		m[img.Source] = img.Digest
-	}
-	return m, nil
+	return nil, errors.New("missing manifest.json")
 }

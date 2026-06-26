@@ -60,19 +60,18 @@ func TestVerify_TamperedContent(t *testing.T) {
 	require.NoError(t, err)
 	// Read the bundle, tamper with the chart archive (always checksummed),
 	// re-tar with the original (now stale) sha256sums.txt.
-	entries, err := readBundle(path)
-	require.NoError(t, err)
+	contents, _ := readArchive(t, path)
 	chartEntry := filepath.Base(chart)
-	entries[chartEntry] = []byte("TAMPERED")
+	contents[chartEntry] = "TAMPERED"
 	tamperedPath := filepath.Join(out, "tampered.tar.gz")
 	f, err := os.Create(tamperedPath)
 	require.NoError(t, err)
 	gw := gzip.NewWriter(f)
 	tw := tar.NewWriter(gw)
-	for name, data := range entries {
+	for name, data := range contents {
 		hdr := &tar.Header{Name: name, Mode: 0o644, Size: int64(len(data))}
 		require.NoError(t, tw.WriteHeader(hdr))
-		_, err = tw.Write(data)
+		_, err = tw.Write([]byte(data))
 		require.NoError(t, err)
 	}
 	require.NoError(t, tw.Close())
@@ -162,4 +161,43 @@ func buildTestBundle(t *testing.T, name string, imgs []ImageEntry) string {
 	})
 	require.NoError(t, err)
 	return path
+}
+
+// TestVerify_LargeBundleDoesNotLoadImagesIntoMemory guards the streaming
+// verify path: a bundle whose image tar is several MiB verifies successfully
+// without the reader needing to hold the image bytes in memory.
+func TestVerify_LargeBundleDoesNotLoadImagesIntoMemory(t *testing.T) {
+	work := t.TempDir()
+	out := t.TempDir()
+	chart := writeTemp(t, work, "c-1.0.0.tgz", "chart")
+	// 8 MiB image tar: large enough that the old readBundle would have held
+	// it all in RAM, small enough to keep the test fast.
+	blob := make([]byte, 8<<20)
+	for i := range blob {
+		blob[i] = byte(i)
+	}
+	img := filepath.Join(work, "big.tar")
+	require.NoError(t, os.WriteFile(img, blob, 0o644))
+	path, err := Create(Spec{
+		ChartName:    "c",
+		ChartVersion: "1.0.0",
+		ChartPath:    chart,
+		OutputDir:    out,
+		Images:       []ImageEntry{{TarPath: img, SourceRef: "x:1", DestRef: "r/x:1", Digest: "sha256:abc"}},
+	})
+	require.NoError(t, err)
+	assert.NoError(t, Verify(path))
+}
+
+// TestDiff_ReadsOnlyManifest confirms the streaming readManifestImages still
+// finds manifest.json and reports digest changes.
+func TestDiff_ReadsOnlyManifest(t *testing.T) {
+	a := buildTestBundle(t, "a", []ImageEntry{{SourceRef: "x:1", Digest: "sha256:aaa"}})
+	b := buildTestBundle(t, "b", []ImageEntry{{SourceRef: "x:1", Digest: "sha256:bbb"}})
+	result, err := Diff(a, b)
+	require.NoError(t, err)
+	require.Len(t, result.Changed, 1)
+	assert.Equal(t, "x:1", result.Changed[0].Ref)
+	assert.Equal(t, "sha256:aaa", result.Changed[0].FromDigest)
+	assert.Equal(t, "sha256:bbb", result.Changed[0].ToDigest)
 }
