@@ -93,7 +93,7 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 	spin.Style = lipgloss.NewStyle().Foreground(colorAccent)
 
 	prog := progress.New(
-		progress.WithDefaultBlend(),
+		progress.WithColors(lipgloss.Color("#C8863C"), lipgloss.Color("#E6B864")),
 		progress.WithWidth(60),
 	)
 
@@ -108,12 +108,16 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(colorAccent).Padding(0, 1)
 
-	resultsList := list.New(nil, list.NewDefaultDelegate(), 0, 0)
+	chartDelegate := list.NewDefaultDelegate()
+	chartDelegate.Styles = warmDelegateStyles()
+	resultsList := list.New(nil, chartDelegate, 0, 0)
 	resultsList.Title = "Charts"
 	resultsList.SetShowHelp(false)
 	resultsList.Styles.Title = titleStyle
 
-	versionsList := list.New(nil, list.NewDefaultDelegate(), 0, 0)
+	versionDelegate := list.NewDefaultDelegate()
+	versionDelegate.Styles = warmDelegateStyles()
+	versionsList := list.New(nil, versionDelegate, 0, 0)
 	versionsList.Title = "Versions"
 	versionsList.SetShowHelp(false)
 	versionsList.Styles.Title = titleStyle
