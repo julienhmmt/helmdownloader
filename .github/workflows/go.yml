@@ -16,10 +16,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version-file: 'go.mod'
         cache: true
@@ -36,16 +36,16 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version-file: 'go.mod'
         cache: true
 
     - name: golangci-lint
-      uses: golangci/golangci-lint-action@v7
+      uses: golangci/golangci-lint-action@v9
       with:
         version: v2.1
         args: --timeout 5m
@@ -53,7 +53,7 @@ jobs:
   govulncheck:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     - name: Run govulncheck
       uses: golang/govulncheck-action@v1
