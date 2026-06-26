@@ -10,12 +10,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
 	"github.com/julienhmmt/helmdownloader/pkg/config"
 	"github.com/julienhmmt/helmdownloader/pkg/log"
 	"github.com/julienhmmt/helmdownloader/pkg/registry"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // fakeSaver records calls and optionally fails for refs in failRefs. It tracks
@@ -33,7 +34,7 @@ type fakeSaver struct {
 	attempts map[string]int
 }
 
-func (f *fakeSaver) Save(ctx context.Context, srcRef, destRef, destPath string, onBytes registry.BytesFunc) (string, error) {
+func (f *fakeSaver) Save(_ context.Context, srcRef, _, _ string, _ registry.BytesFunc) (string, error) {
 	f.mu.Lock()
 	f.inFlight++
 	if f.inFlight > f.peak {
@@ -143,7 +144,7 @@ func TestDownload_ReportsProgressOncePerImage(t *testing.T) {
 	var calls int32
 	maxCurrent := int32(0)
 	_, _, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs,
-		func(current, total int, ref string, perr error) {
+		func(current, total int, _ string, _ error) {
 			atomic.AddInt32(&calls, 1)
 			if int32(current) > atomic.LoadInt32(&maxCurrent) {
 				atomic.StoreInt32(&maxCurrent, int32(current))

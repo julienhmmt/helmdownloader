@@ -5,6 +5,7 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+
 	"github.com/julienhmmt/helmdownloader/pkg/images"
 	"github.com/julienhmmt/helmdownloader/pkg/pipeline"
 )
@@ -303,7 +304,7 @@ func (m model) handleEndKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // reset returns the model to a fresh search state for another chart.
 func (m model) reset() (model, tea.Cmd) {
 	m.cancel()
-	fresh := New(m.cfg, m.logger)
+	fresh := newModel(m.cfg, m.logger)
 	fresh.width, fresh.height = m.width, m.height
 	fresh.results.SetSize(m.width-2, m.height-6)
 	fresh.versions.SetSize(m.width-2, m.height-6)

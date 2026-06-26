@@ -5,14 +5,15 @@ import (
 	"os"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
 	"github.com/julienhmmt/helmdownloader/pkg/config"
 	"github.com/julienhmmt/helmdownloader/pkg/helm"
 	"github.com/julienhmmt/helmdownloader/pkg/images"
 	"github.com/julienhmmt/helmdownloader/pkg/log"
 	"github.com/julienhmmt/helmdownloader/pkg/pipeline"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // skipUnlessSmoke skips network/helm-dependent smoke tests in -short mode so

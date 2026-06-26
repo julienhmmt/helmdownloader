@@ -5,9 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/julienhmmt/helmdownloader/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/julienhmmt/helmdownloader/pkg/config"
 )
 
 func TestDefault_HasSensibleValues(t *testing.T) {

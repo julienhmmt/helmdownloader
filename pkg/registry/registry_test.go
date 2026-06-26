@@ -5,9 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/julienhmmt/helmdownloader/pkg/log"
 	"github.com/julienhmmt/helmdownloader/pkg/registry"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestSave_InvalidProxyErrorsBeforeNetwork(t *testing.T) {

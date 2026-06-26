@@ -3,8 +3,9 @@ package images_test
 import (
 	"testing"
 
-	"github.com/julienhmmt/helmdownloader/pkg/images"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/julienhmmt/helmdownloader/pkg/images"
 )
 
 func TestExtract_FindsImagesAndDeduplicates(t *testing.T) {

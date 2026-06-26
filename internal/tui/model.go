@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
 	"github.com/julienhmmt/helmdownloader/pkg/bundle"
 	"github.com/julienhmmt/helmdownloader/pkg/config"
@@ -85,8 +86,8 @@ type model struct {
 	err           error
 }
 
-// New constructs the root model from cfg.
-func New(cfg config.Config, logger *log.Logger) model {
+// newModel constructs the root model from cfg.
+func newModel(cfg config.Config, logger *log.Logger) model {
 	spin := spinner.New()
 	spin.Spinner = spinner.Dot
 	spin.Style = lipgloss.NewStyle().Foreground(colorAccent)

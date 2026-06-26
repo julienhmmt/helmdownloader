@@ -6,10 +6,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
-	"github.com/julienhmmt/helmdownloader/pkg/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
+	"github.com/julienhmmt/helmdownloader/pkg/log"
 )
 
 func TestIsOCI(t *testing.T) {
@@ -60,7 +61,7 @@ func TestVersions_ParsesAndEscapesPath(t *testing.T) {
 }
 
 func TestGetJSON_Non200IsError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
@@ -71,7 +72,7 @@ func TestGetJSON_Non200IsError(t *testing.T) {
 }
 
 func TestSearch_TransportErrorIsReturned(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	srv.Close() // server is down: request fails at transport level
 
 	client := artifacthub.New(srv.URL, log.Discard())

@@ -6,9 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/julienhmmt/helmdownloader/pkg/images"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/julienhmmt/helmdownloader/pkg/images"
 )
 
 func TestExportImages_WritesJSON(t *testing.T) {

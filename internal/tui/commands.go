@@ -5,6 +5,7 @@ import (
 	"os"
 
 	tea "charm.land/bubbletea/v2"
+
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
 	"github.com/julienhmmt/helmdownloader/pkg/bundle"
 	"github.com/julienhmmt/helmdownloader/pkg/pipeline"

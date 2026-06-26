@@ -5,12 +5,13 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
 	"github.com/julienhmmt/helmdownloader/pkg/bundle"
 	"github.com/julienhmmt/helmdownloader/pkg/config"
 	"github.com/julienhmmt/helmdownloader/pkg/log"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestBundle_CleansHelmCacheFromPersistentWorkDir(t *testing.T) {

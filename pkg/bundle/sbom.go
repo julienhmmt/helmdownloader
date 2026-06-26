@@ -62,7 +62,7 @@ type spdxRelation struct {
 // for the Helm chart and one per container image, each carrying its pinned
 // digest as a checksum when present. now supplies the creation timestamp so
 // tests can control it. The returned bytes are pretty-printed JSON.
-func buildSBOM(spec Spec, chartArchive string, now time.Time) ([]byte, error) {
+func buildSBOM(spec Spec, _ string, now time.Time) ([]byte, error) {
 	docNS := fmt.Sprintf("https://helmdownloader.example/spdx/%s-%s-%d",
 		spec.ChartName, spec.ChartVersion, now.Unix())
 	doc := spdxDocument{

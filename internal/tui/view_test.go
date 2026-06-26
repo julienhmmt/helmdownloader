@@ -5,18 +5,19 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
 	"github.com/julienhmmt/helmdownloader/pkg/config"
 	"github.com/julienhmmt/helmdownloader/pkg/images"
 	"github.com/julienhmmt/helmdownloader/pkg/log"
 	"github.com/julienhmmt/helmdownloader/pkg/pipeline"
-	"github.com/stretchr/testify/assert"
 )
 
 // newTestModel returns a model sized to a known terminal so framed views
 // render deterministically.
 func newTestModel() model {
-	m := New(config.Default(), log.Discard())
+	m := newModel(config.Default(), log.Discard())
 	m.width, m.height = 100, 40
 	return m
 }
@@ -89,25 +90,25 @@ func TestHumanBytes(t *testing.T) {
 }
 
 func TestMiniBar_Determinate(t *testing.T) {
-	m := New(config.Default(), log.Discard())
+	m := newModel(config.Default(), log.Discard())
 	bar := m.miniBar(5, 10, 10)
 	assert.Equal(t, "[=====     ]", bar)
 }
 
 func TestMiniBar_Full(t *testing.T) {
-	m := New(config.Default(), log.Discard())
+	m := newModel(config.Default(), log.Discard())
 	bar := m.miniBar(10, 10, 10)
 	assert.Equal(t, "[==========]", bar)
 }
 
 func TestMiniBar_OverFillClamps(t *testing.T) {
-	m := New(config.Default(), log.Discard())
+	m := newModel(config.Default(), log.Discard())
 	bar := m.miniBar(20, 10, 10)
 	assert.Equal(t, "[==========]", bar)
 }
 
 func TestMiniBar_Indeterminate(t *testing.T) {
-	m := New(config.Default(), log.Discard())
+	m := newModel(config.Default(), log.Discard())
 	// 1 cell per MiB; 5 MiB written -> 5 cells of a 10-cell bar.
 	bar := m.miniBar(5*1024*1024, 0, 10)
 	// The bar is styled with subtle; assert on the visible structure by
@@ -117,14 +118,14 @@ func TestMiniBar_Indeterminate(t *testing.T) {
 }
 
 func TestByteLabel_WithTotal(t *testing.T) {
-	m := New(config.Default(), log.Discard())
+	m := newModel(config.Default(), log.Discard())
 	label := m.byteLabel(1024, 2048)
 	assert.Contains(t, label, "1.0 KiB")
 	assert.Contains(t, label, "2.0 KiB")
 }
 
 func TestByteLabel_WithoutTotal(t *testing.T) {
-	m := New(config.Default(), log.Discard())
+	m := newModel(config.Default(), log.Discard())
 	label := m.byteLabel(1024, 0)
 	assert.Contains(t, label, "1.0 KiB")
 }

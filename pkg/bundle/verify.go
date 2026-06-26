@@ -27,7 +27,7 @@ func readBundle(path string) (map[string][]byte, error) {
 		return nil, fmt.Errorf("open bundle: %w", err)
 	}
 	defer func() { _ = f.Close() }()
-	var stream io.Reader = f
+	var stream io.Reader
 	switch {
 	case strings.HasSuffix(path, ".gz") || strings.HasSuffix(path, ".tgz"):
 		gz, err := gzip.NewReader(f)
@@ -50,7 +50,7 @@ func readBundle(path string) (map[string][]byte, error) {
 	tr := tar.NewReader(stream)
 	for {
 		hdr, err := tr.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {

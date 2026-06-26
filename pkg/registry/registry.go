@@ -16,6 +16,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
+
 	"github.com/julienhmmt/helmdownloader/pkg/log"
 )
 
@@ -66,14 +67,6 @@ func NewPuller(platform, proxy string, auth bool, logger *log.Logger) *Puller {
 	return &Puller{platform: platform, proxy: proxy, auth: auth, logger: logger}
 }
 
-// Save pulls srcRef for the configured platform and writes it to destPath as a
-// docker-style tarball, embedding destRef as the image's tag so a later
-// "docker load" yields the retagged image ready to push to the airgap registry.
-//
-// It returns the resolved manifest digest of the pulled, platform-specific
-// image (e.g. "sha256:..."). The digest pins exactly what was bundled so the
-// airgapped side can verify it, even though the tarball itself is tagged rather
-// than digest-referenced.
 // buildOpts assembles the crane options for a pull: platform, proxy (when
 // configured), auth (when enabled), and the context. Extracted for
 // testability so the auth/proxy wiring can be asserted without a network
@@ -102,6 +95,14 @@ func (p *Puller) buildOpts(ctx context.Context) ([]crane.Option, error) {
 	return opts, nil
 }
 
+// Save pulls srcRef for the configured platform and writes it to destPath as a
+// docker-style tarball, embedding destRef as the image's tag so a later
+// "docker load" yields the retagged image ready to push to the airgap registry.
+//
+// It returns the resolved manifest digest of the pulled, platform-specific
+// image (e.g. "sha256:..."). The digest pins exactly what was bundled so the
+// airgapped side can verify it, even though the tarball itself is tagged rather
+// than digest-referenced.
 func (p *Puller) Save(ctx context.Context, srcRef, destRef, destPath string, onBytes BytesFunc) (string, error) {
 	p.logger.Infof("pulling image %s for platform %s", srcRef, p.platform)
 	opts, err := p.buildOpts(ctx)
