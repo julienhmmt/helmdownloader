@@ -45,6 +45,8 @@ func main() {
 	verbose := flag.Bool("v", false, "enable verbose logging (shortcut for --log-level=debug)")
 	logLevel := flag.String("log-level", "", "set log level: silent, info, or debug (default: info)")
 	logFile := flag.String("log-file", "helmdownloader.log", "path for log output")
+	exportImages := flag.String("export-images", "", "write the discovered image list (JSON) to this path after rendering, for security review")
+	importImages := flag.String("import-images", "", "read an approved image list (JSON) from this path at download time, overriding the discovered set")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)
@@ -106,6 +108,12 @@ func main() {
 	}
 	if cfg.LogFile == "" {
 		cfg.LogFile = *logFile
+	}
+	if *exportImages != "" {
+		cfg.ExportImages = *exportImages
+	}
+	if *importImages != "" {
+		cfg.ImportImages = *importImages
 	}
 
 	if err := bundle.ValidateCompression(cfg.Compression); err != nil {

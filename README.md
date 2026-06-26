@@ -85,6 +85,8 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 | `-v` | `false` | Enable verbose logging (shortcut for `--log-level=debug`) |
 | `-log-level` | `info` | Set log level: `silent`, `info`, or `debug` |
 | `-log-file` | `helmdownloader.log` | Path for log output |
+| `-export-images` | (none) | Write the discovered image list (JSON) to this path after rendering, for security review |
+| `-import-images` | (none) | Read an approved image list (JSON) from this path at download time, overriding the discovered set |
 
 ### Configuration File
 
@@ -107,6 +109,32 @@ search_limit: 20
 verbose: true
 log_level: "debug"
 log_file: "helmdownloader.log"
+```
+
+### Security Review Workflow
+
+Use `-export-images` and `-import-images` to review the discovered image list with a security team before pulling:
+
+```bash
+# 1. Run with -export-images: discover images, write the list, then quit
+#    from the Review screen (Esc) without downloading.
+./helmdownloader -export-images images.json
+
+# 2. Security team reviews/edits images.json (set selected: true/false,
+#    remove untrusted refs, add missing ones).
+
+# 3. Run with -import-images: the approved list overrides the discovered
+#    set at download time.
+./helmdownloader -import-images images.json
+```
+
+The JSON format is an array of entries:
+
+```json
+[
+  {"ref": "quay.io/argoproj/argocd:v3.2.6", "selected": true},
+  {"ref": "redis:7", "selected": false}
+]
 ```
 
 ## Bundle Format

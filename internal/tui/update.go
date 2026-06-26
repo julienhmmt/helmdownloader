@@ -33,6 +33,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.reviewImages = typed.prepared.Images
 		m.reviewCursor = 0
 		m.state = stateReview
+		if err := exportImages(m.cfg.ExportImages, m.reviewImages); err != nil {
+			m.err = err
+			m.state = stateError
+			return m, nil
+		}
 		return m, nil
 	case progressMsg:
 		m.downCurrent, m.downTotal, m.downRef = typed.current, typed.total, typed.ref
@@ -211,6 +216,22 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		if m.countSelected() == 0 {
 			return m, nil
+		}
+		// If an approved image list was provided, it overrides the discovered
+		// set: only refs present in the import (and marked Selected) are pulled.
+		if m.cfg.ImportImages != "" {
+			imported, err := importImages(m.cfg.ImportImages)
+			if err != nil {
+				m.err = err
+				m.state = stateError
+				return m, nil
+			}
+			if len(imported) > 0 {
+				m.reviewImages = imported
+			}
+		}
+		if m.countSelected() == 0 {
+			return m, nil // import may have deselected everything
 		}
 		m.prepared.Images = m.reviewImages
 		refs := selectedRefs(m.reviewImages)
