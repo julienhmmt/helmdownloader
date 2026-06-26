@@ -40,12 +40,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case progressMsg:
-		m.downCurrent, m.downTotal, m.downRef = typed.current, typed.total, typed.ref
-		// A finished image clears any stale byte counter for the next one.
-		m.downWritten, m.downSize = 0, 0
+		m.downCurrent, m.downTotal = typed.current, typed.total
+		delete(m.imageProgress, typed.ref)
 		return m, waitForActivity(m.activity)
 	case byteProgressMsg:
-		m.downWritten, m.downSize = typed.written, typed.total
+		m.imageProgress[typed.ref] = imageProgress{written: typed.written, total: typed.total}
 		return m, waitForActivity(m.activity)
 	case downloadDoneMsg:
 		m.entries = append(m.entries, typed.entries...)
@@ -236,6 +235,7 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.prepared.Images = m.reviewImages
 		refs := selectedRefs(m.reviewImages)
 		m.entries, m.failures = nil, nil
+		m.imageProgress = map[string]imageProgress{}
 		m.state = stateDownloading
 		m.downCurrent, m.downTotal = 0, len(refs)
 		return m, tea.Batch(m.spinner.Tick, downloadCmd(m.ctx, m.pipeline, m.prepared, refs, m.activity))
@@ -250,6 +250,7 @@ func (m model) handleDownloadReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 	case "r":
 		refs := failureRefs(m.failures)
 		m.failures = nil
+		m.imageProgress = map[string]imageProgress{}
 		m.state = stateDownloading
 		m.downCurrent, m.downTotal = 0, len(refs)
 		return m, tea.Batch(m.spinner.Tick, downloadCmd(m.ctx, m.pipeline, m.prepared, refs, m.activity))

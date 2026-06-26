@@ -36,6 +36,12 @@ const (
 	stateError
 )
 
+// imageProgress is the byte-level progress of one in-flight image pull.
+type imageProgress struct {
+	written int64
+	total   int64
+}
+
 // model is the root Bubble Tea model holding all UI and domain state.
 type model struct {
 	cfg      config.Config
@@ -69,13 +75,14 @@ type model struct {
 	activity    chan tea.Msg
 	downCurrent int
 	downTotal   int
-	downRef     string
-	downWritten int64
-	downSize    int64
-	entries     []bundle.ImageEntry
-	failures    []pipeline.ImageFailure
-	bundlePath  string
-	err         error
+	// imageProgress tracks byte-level progress per in-flight image ref,
+	// so the download screen can show all concurrent pulls advancing
+	// rather than flapping between refs.
+	imageProgress map[string]imageProgress
+	entries       []bundle.ImageEntry
+	failures      []pipeline.ImageFailure
+	bundlePath    string
+	err           error
 }
 
 // New constructs the root model from cfg.
@@ -113,21 +120,22 @@ func New(cfg config.Config, logger *log.Logger) model {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return model{
-		cfg:      cfg,
-		client:   artifacthub.New(cfg.ArtifactHubURL, logger),
-		pipeline: pipeline.New(cfg, logger),
-		styles:   newStyles(),
-		logger:   logger,
-		ctx:      ctx,
-		cancel:   cancel,
-		state:    stateSearch,
-		spinner:  spin,
-		progress: prog,
-		search:   search,
-		addInput: add,
-		results:  resultsList,
-		versions: versionsList,
-		activity: make(chan tea.Msg, 16),
+		cfg:           cfg,
+		client:        artifacthub.New(cfg.ArtifactHubURL, logger),
+		pipeline:      pipeline.New(cfg, logger),
+		styles:        newStyles(),
+		logger:        logger,
+		ctx:           ctx,
+		cancel:        cancel,
+		state:         stateSearch,
+		spinner:       spin,
+		progress:      prog,
+		search:        search,
+		addInput:      add,
+		results:       resultsList,
+		versions:      versionsList,
+		activity:      make(chan tea.Msg, 16),
+		imageProgress: map[string]imageProgress{},
 	}
 }
 

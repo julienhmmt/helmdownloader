@@ -87,3 +87,44 @@ func TestHumanBytes(t *testing.T) {
 		assert.Equal(t, c.want, humanBytes(c.in), "humanBytes(%d)", c.in)
 	}
 }
+
+func TestMiniBar_Determinate(t *testing.T) {
+	m := New(config.Default(), log.Discard())
+	bar := m.miniBar(5, 10, 10)
+	assert.Equal(t, "[=====     ]", bar)
+}
+
+func TestMiniBar_Full(t *testing.T) {
+	m := New(config.Default(), log.Discard())
+	bar := m.miniBar(10, 10, 10)
+	assert.Equal(t, "[==========]", bar)
+}
+
+func TestMiniBar_OverFillClamps(t *testing.T) {
+	m := New(config.Default(), log.Discard())
+	bar := m.miniBar(20, 10, 10)
+	assert.Equal(t, "[==========]", bar)
+}
+
+func TestMiniBar_Indeterminate(t *testing.T) {
+	m := New(config.Default(), log.Discard())
+	// 1 cell per MiB; 5 MiB written -> 5 cells of a 10-cell bar.
+	bar := m.miniBar(5*1024*1024, 0, 10)
+	// The bar is styled with subtle; assert on the visible structure by
+	// checking Contains, since the exact styled string includes escape codes.
+	assert.Contains(t, bar, "[=====")
+	assert.Contains(t, bar, "     ]")
+}
+
+func TestByteLabel_WithTotal(t *testing.T) {
+	m := New(config.Default(), log.Discard())
+	label := m.byteLabel(1024, 2048)
+	assert.Contains(t, label, "1.0 KiB")
+	assert.Contains(t, label, "2.0 KiB")
+}
+
+func TestByteLabel_WithoutTotal(t *testing.T) {
+	m := New(config.Default(), log.Discard())
+	label := m.byteLabel(1024, 0)
+	assert.Contains(t, label, "1.0 KiB")
+}
