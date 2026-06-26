@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,6 +16,11 @@ import (
 )
 
 const helmKind = "0"
+
+// maxArtifactHubBody caps the size of an ArtifactHub response body before
+// decoding, so a runaway or compromised hub response cannot exhaust memory.
+// 16 MiB is well above any real search/versions payload.
+const maxArtifactHubBody = 16 << 20
 
 // Package is a single Helm chart entry returned by a search.
 type Package struct {
@@ -116,7 +122,7 @@ func (c *Client) getJSON(ctx context.Context, endpoint string, out any) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("artifacthub: unexpected status %d for %s", resp.StatusCode, endpoint)
 	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	return json.NewDecoder(io.LimitReader(resp.Body, maxArtifactHubBody)).Decode(out)
 }
 
 type searchResponse struct {
