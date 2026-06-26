@@ -4,6 +4,7 @@ package pipeline
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -434,8 +435,13 @@ func reusableTarball(tarPath string) (string, bool) {
 var unsafeChars = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
 
 // tarballName derives a filesystem-safe tar filename from an image reference.
+// A short hash of the original ref is appended so two distinct refs that
+// sanitize to the same string (e.g. "foo/bar:1" and "foo_bar.1") cannot map to
+// the same filename — which would let concurrent pulls O_TRUNC each other's
+// tarball and silently corrupt the bundle.
 func tarballName(ref string) string {
 	safe := unsafeChars.ReplaceAllString(ref, "_")
 	safe = strings.Trim(safe, "_")
-	return fmt.Sprintf("%s.tar", safe)
+	sum := sha256.Sum256([]byte(ref))
+	return fmt.Sprintf("%s-%x.tar", safe, sum[:4])
 }

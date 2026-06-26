@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -254,9 +255,33 @@ func TestBundle_RequiresAtLeastOneImage(t *testing.T) {
 }
 
 func TestTarballName_SanitizesUnsafeChars(t *testing.T) {
-	assert.Equal(t, "quay.io_argoproj_argocd_v3.2.6.tar", tarballName("quay.io/argoproj/argocd:v3.2.6"))
-	assert.Equal(t, "redis_7.tar", tarballName("redis:7"))
-	assert.Equal(t, "ghcr.io_dexidp_dex_sha256_abc.tar", tarballName("ghcr.io/dexidp/dex@sha256:abc"))
+	// The sanitized prefix is preserved for readability; a short hash of the
+	// original ref is appended so distinct refs cannot collide on one filename.
+	assert.Equal(t, "quay.io_argoproj_argocd_v3.2.6-b7bd66b7.tar", tarballName("quay.io/argoproj/argocd:v3.2.6"))
+	assert.Equal(t, "redis_7-00ed341f.tar", tarballName("redis:7"))
+	assert.Equal(t, "ghcr.io_dexidp_dex_sha256_abc-228f687c.tar", tarballName("ghcr.io/dexidp/dex@sha256:abc"))
+}
+
+func TestTarballName_DistinctRefsProduceDistinctNames(t *testing.T) {
+	// Ref pairs that sanitize to the same string but differ in raw form must
+	// get distinct filenames thanks to the appended hash.
+	pairs := [][2]string{
+		{"foo/bar:1", "foo_bar.1"},
+		{"a/b:c", "a_b.c"},
+		{"x.y/z", "x_y.z"},
+	}
+	for _, pair := range pairs {
+		assert.NotEqual(t, tarballName(pair[0]), tarballName(pair[1]),
+			"refs %q and %q collided on the same filename", pair[0], pair[1])
+	}
+}
+
+func TestTarballName_StableForSameRef(t *testing.T) {
+	assert.Equal(t, tarballName("foo/bar:1"), tarballName("foo/bar:1"))
+}
+
+func TestTarballName_KeepsExtension(t *testing.T) {
+	assert.True(t, strings.HasSuffix(tarballName("foo/bar:1"), ".tar"))
 }
 
 func TestConcurrency_FloorsAtOne(t *testing.T) {

@@ -79,3 +79,18 @@ func TestSearch_TransportErrorIsReturned(t *testing.T) {
 	_, err := client.Search(context.Background(), "x", 5)
 	assert.Error(t, err)
 }
+
+func TestSearch_RejectsOversizedBody(t *testing.T) {
+	// An oversized response body (maxArtifactHubBody+1 bytes of spaces) is
+	// truncated by the io.LimitReader cap, so the JSON decoder sees a
+	// truncated stream and errors instead of consuming unbounded memory.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(make([]byte, 16<<20+1))
+	}))
+	defer srv.Close()
+
+	client := artifacthub.New(srv.URL, log.Discard())
+	_, err := client.Search(context.Background(), "x", 5)
+	assert.Error(t, err)
+}
