@@ -121,11 +121,14 @@ images/
   <image2>.tar
 images.txt                # manifest: source_ref  dest_ref  tar_name  digest
 manifest.json             # provenance: tool, chart, codec, images + digests
+sbom.spdx.json            # SPDX 2.3 SBOM: chart + images with pinned digests
 sha256sums.txt            # sha256 of every bundled file (sha256sum -c format)
 load.sh                   # verifies checksums, then loads and pushes every image
 ```
 
 The `images.txt` manifest maps original references to their retagged counterparts and records the resolved manifest digest (`sha256:...`, or `-` when the registry reported none) of exactly what was bundled, making it easy to script and verify the import side on airgapped infrastructure.
+
+An SPDX 2.3 JSON SBOM (`sbom.spdx.json`) lists the chart and every image with its pinned manifest digest, for ingestion into standard SBOM tooling on the airgapped side.
 
 On the airgapped side, extract the bundle and run the generated `load.sh` to load every image into your container engine and push it to the target registry:
 

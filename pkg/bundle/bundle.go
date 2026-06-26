@@ -142,7 +142,8 @@ func Create(spec Spec) (path string, err error) {
 		return "", err
 	}
 	checksums.add(sum, "images.txt")
-	prov, err := buildProvenance(spec, chartName, ext, time.Now())
+	now := time.Now()
+	prov, err := buildProvenance(spec, chartName, ext, now)
 	if err != nil {
 		return "", fmt.Errorf("build provenance: %w", err)
 	}
@@ -150,6 +151,14 @@ func Create(spec Spec) (path string, err error) {
 		return "", err
 	}
 	checksums.add(sum, "manifest.json")
+	sbom, err := buildSBOM(spec, chartName, now)
+	if err != nil {
+		return "", fmt.Errorf("build sbom: %w", err)
+	}
+	if sum, err = writeBytes(tarWriter, "sbom.spdx.json", sbom); err != nil {
+		return "", err
+	}
+	checksums.add(sum, "sbom.spdx.json")
 	if _, err = writeBytes(tarWriter, "sha256sums.txt", []byte(checksums.String())); err != nil {
 		return "", err
 	}
