@@ -7,7 +7,7 @@ require (
 	charm.land/bubbletea/v2 v2.0.7
 	charm.land/lipgloss/v2 v2.0.4
 	github.com/google/go-containerregistry v0.21.7
-	github.com/klauspost/compress v1.18.6
+	github.com/klauspost/compress v1.19.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/sync v0.21.0
 	golang.org/x/sys v0.46.0
