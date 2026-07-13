@@ -12,22 +12,22 @@ loads and pushes every image on the airgapped side.
 
 ## Commands
 
-Use the `task` runner (Taskfile.yml):
+Use Make (`Makefile`):
 
-| Task | Command |
-| ---- | ------- |
-| Build | `task build` (or `go build -o helmdownloader .`) |
-| Test | `task test` (`go test ./... -count=1`) |
-| Test w/ race | `task test-race` |
-| Vet | `task go-vet` |
-| Lint | `task go-lint` (golangci-lint) |
-| Vuln scan | `task govulncheck` |
-| Security (vet+lint+vuln) | `task security` |
-| Install | `task install` |
+| Target | Command |
+| ------ | ------- |
+| Build | `make build` (or `go build -o helmdownloader .`) |
+| Test | `make test` (`go test ./... -count=1`) |
+| Test w/ race | `make test-race` |
+| Vet | `make go-vet` |
+| Lint | `make go-lint` (golangci-lint) |
+| Vuln scan | `make govulncheck` |
+| Security (vet+lint+vuln) | `make security` |
+| Install | `make install` |
 
 Run a single package's tests: `go test ./pkg/pipeline/ -run TestName -v`.
 
-Always run `task test-race` before considering a change done — the pipeline
+Always run `make test-race` before considering a change done — the pipeline
 download path is concurrent.
 
 ## Architecture

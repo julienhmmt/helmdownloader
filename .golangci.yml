@@ -1,5 +1,5 @@
 # golangci-lint v2 configuration for helmdownloader.
-# Run locally with: task go-lint  (or: golangci-lint run ./...)
+# Run locally with: make go-lint  (or: golangci-lint run ./...)
 version: "2"
 
 run:
