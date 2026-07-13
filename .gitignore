@@ -11,3 +11,6 @@ go-coverage.log
 
 # Binary
 helmdownloader
+
+# graphify local knowledge graph (AI tooling; not product)
+graphify-out/
