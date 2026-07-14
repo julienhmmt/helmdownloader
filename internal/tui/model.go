@@ -140,18 +140,12 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(colorAccent).Padding(0, 1)
 
-	chartDelegate := list.NewDefaultDelegate()
-	chartDelegate.Styles = chartDelegateStyles()
-	chartDelegate.SetSpacing(1)
-	resultsList := list.New(nil, chartDelegate, 0, 0)
+	resultsList := list.New(nil, newHoverDelegate(), 0, 0)
 	resultsList.Title = "Charts"
 	resultsList.SetShowHelp(false)
 	resultsList.Styles.Title = titleStyle
 
-	versionDelegate := list.NewDefaultDelegate()
-	versionDelegate.Styles = chartDelegateStyles()
-	versionDelegate.SetSpacing(1)
-	versionsList := list.New(nil, versionDelegate, 0, 0)
+	versionsList := list.New(nil, newHoverDelegate(), 0, 0)
 	versionsList.Title = "Versions"
 	versionsList.SetShowHelp(false)
 	versionsList.Styles.Title = titleStyle

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/bubbles/v2/list"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
@@ -62,6 +63,37 @@ func TestViewReviewShowsSelectionAndCursor(t *testing.T) {
 	assert.Contains(t, out, "argo-cd")
 	assert.Contains(t, out, "1 selected of 1")
 	assert.Contains(t, out, "quay.io/argoproj/argocd:v2.9.3")
+}
+
+func TestViewReview_HoverSpansFullRow(t *testing.T) {
+	m := newTestModel()
+	m.state = stateReview
+	m.width, m.height = 100, 40
+	m.selectedPkg = artifacthub.Package{Name: "argo-cd"}
+	m.selectedVersion = "5.51.6"
+	m.reviewImages = []images.Image{
+		{Ref: "nginx:1.27", Selected: true},
+		{Ref: "redis:7", Selected: false},
+	}
+	m.reviewCursor = 0
+	out := m.render()
+	// Full-width hover is applied via lipgloss Width; the row must contain the
+	// focused ref and render wider than the bare text alone.
+	assert.Contains(t, out, "nginx:1.27")
+	assert.Equal(t, m.reviewRowWidth(), m.reviewFrameInnerWidth())
+	assert.Greater(t, m.reviewRowWidth(), len("▸ [x] nginx:1.27"))
+}
+
+func TestHoverDelegate_SelectedTitleUsesListWidth(t *testing.T) {
+	items := packagesToItems([]artifacthub.Package{
+		{Name: "short", Description: "d", Stars: 1},
+	})
+	l := list.New(items, newHoverDelegate(), 80, 20)
+	l.Title = "Charts"
+	l.SetShowHelp(false)
+	// Rendering must succeed and the selected row background is width-bound
+	// inside the delegate (Width(m.Width())). Smoke-check View is non-empty.
+	assert.NotEmpty(t, strings.TrimSpace(l.View()))
 }
 
 func TestViewResultsShowsSortFilterStatus(t *testing.T) {
