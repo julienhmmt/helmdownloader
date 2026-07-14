@@ -3,8 +3,11 @@ package bundle
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/julienhmmt/helmdownloader/pkg/version"
 )
 
 // SPDX 2.3 JSON document structures. Only the fields needed for standard
@@ -73,14 +76,19 @@ func buildSBOM(spec Spec, _ string, now time.Time) ([]byte, error) {
 		DocumentNamespace: docNS,
 		CreationInfo: spdxCreation{
 			Created:  now.UTC().Format(time.RFC3339),
-			Creators: []string{"Tool: helmdownloader"},
+			Creators: []string{"Tool: " + version.String()},
 		},
+	}
+	// Use the chart archive basename only — never absolute host paths from the build machine.
+	chartLoc := filepath.Base(spec.ChartPath)
+	if chartLoc == "" || chartLoc == "." {
+		chartLoc = "NOASSERTION"
 	}
 	chartPkg := spdxPackage{
 		SPDXID:           "SPDXRef-Package-Chart",
 		Name:             spec.ChartName,
 		VersionInfo:      spec.ChartVersion,
-		DownloadLocation: spec.ChartPath,
+		DownloadLocation: chartLoc,
 		FilesAnalyzed:    false,
 		LicenseConcluded: "NOASSERTION",
 		LicenseDeclared:  "NOASSERTION",

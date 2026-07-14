@@ -21,6 +21,7 @@ builds:
     binary: helmdownloader
     ldflags:
       - -s -w
+      - -X github.com/julienhmmt/helmdownloader/pkg/version.Version={{.Version}}
 
 archives:
   - formats:

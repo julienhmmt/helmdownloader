@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/google/go-containerregistry/pkg/name"
 	"gopkg.in/yaml.v3"
 )
 
@@ -133,6 +134,19 @@ func isImageRef(ref string) bool {
 	}
 	// A real reference carries a tag, a digest, or a registry path separator.
 	return strings.Contains(ref, ":") || strings.Contains(ref, "@") || strings.Contains(ref, "/")
+}
+
+// ValidRef reports whether ref is acceptable as a container image reference
+// for pull/retag. It applies the same light heuristics as discovery, then
+// rejects refs that cannot be normalized for pull (name.ParseReference).
+// Discovery (Extract) stays best-effort and does not call ValidRef.
+func ValidRef(ref string) bool {
+	ref = strings.TrimSpace(ref)
+	if !isImageRef(ref) {
+		return false
+	}
+	_, err := name.ParseReference(PullRef(ref), name.WeakValidation)
+	return err == nil
 }
 
 // defaultTag is used for the destination tag when a source reference carries no

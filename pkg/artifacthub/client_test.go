@@ -2,8 +2,10 @@ package artifacthub_test
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,6 +18,13 @@ import (
 func TestIsOCI(t *testing.T) {
 	assert.True(t, artifacthub.Package{RepoURL: "oci://registry.local/charts"}.IsOCI())
 	assert.False(t, artifacthub.Package{RepoURL: "https://charts.example.com"}.IsOCI())
+}
+
+func mustClient(t *testing.T, baseURL, proxy string) *artifacthub.Client {
+	t.Helper()
+	client, err := artifacthub.New(baseURL, proxy, log.Discard())
+	require.NoError(t, err)
+	return client
 }
 
 func TestSearch_ParsesPackages(t *testing.T) {
@@ -31,7 +40,7 @@ func TestSearch_ParsesPackages(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := artifacthub.New(srv.URL, log.Discard())
+	client := mustClient(t, srv.URL, "")
 	pkgs, err := client.Search(context.Background(), "argo-cd", 20)
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
@@ -57,7 +66,7 @@ func TestVersions_ParsesAndEscapesPath(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := artifacthub.New(srv.URL, log.Discard())
+	client := mustClient(t, srv.URL, "")
 	versions, err := client.Versions(context.Background(), "argo", "argo-cd")
 	require.NoError(t, err)
 	require.Len(t, versions, 2)
@@ -72,7 +81,7 @@ func TestGetJSON_Non200IsError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := artifacthub.New(srv.URL, log.Discard())
+	client := mustClient(t, srv.URL, "")
 	_, err := client.Search(context.Background(), "x", 5)
 	assert.Error(t, err)
 }
@@ -81,7 +90,7 @@ func TestSearch_TransportErrorIsReturned(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	srv.Close() // server is down: request fails at transport level
 
-	client := artifacthub.New(srv.URL, log.Discard())
+	client := mustClient(t, srv.URL, "")
 	_, err := client.Search(context.Background(), "x", 5)
 	assert.Error(t, err)
 }
@@ -96,7 +105,58 @@ func TestSearch_RejectsOversizedBody(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := artifacthub.New(srv.URL, log.Discard())
+	client := mustClient(t, srv.URL, "")
 	_, err := client.Search(context.Background(), "x", 5)
 	assert.Error(t, err)
+}
+
+func TestNew_InvalidProxy(t *testing.T) {
+	_, err := artifacthub.New("https://example.com", "://bad", log.Discard())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "proxy")
+}
+
+func TestNew_EmptyProxyUsesDefaultTransport(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"packages":[]}`))
+	}))
+	defer srv.Close()
+	client, err := artifacthub.New(srv.URL, "", log.Discard())
+	require.NoError(t, err)
+	_, err = client.Search(context.Background(), "x", 1)
+	require.NoError(t, err)
+}
+
+func TestNew_ProxyIsUsed(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v1/packages/search", r.URL.Path)
+		_, _ = w.Write([]byte(`{"packages":[]}`))
+	}))
+	defer backend.Close()
+
+	var proxyHits atomic.Int32
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxyHits.Add(1)
+		// Forward absolute-form HTTP proxy requests to the backend.
+		req, err := http.NewRequestWithContext(r.Context(), r.Method, r.URL.String(), r.Body)
+		require.NoError(t, err)
+		req.Header = r.Header.Clone()
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		for k, vs := range resp.Header {
+			for _, v := range vs {
+				w.Header().Add(k, v)
+			}
+		}
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	}))
+	defer proxy.Close()
+
+	client, err := artifacthub.New(backend.URL, proxy.URL, log.Discard())
+	require.NoError(t, err)
+	_, err = client.Search(context.Background(), "x", 1)
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, proxyHits.Load(), int32(1))
 }

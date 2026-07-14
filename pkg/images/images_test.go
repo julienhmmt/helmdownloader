@@ -1,6 +1,7 @@
 package images_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -223,6 +224,27 @@ func TestPullRef(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, images.PullRef(tt.ref))
+		})
+	}
+}
+
+func TestValidRef(t *testing.T) {
+	digest64 := "sha256:" + strings.Repeat("a", 64)
+	tests := []struct {
+		ref  string
+		want bool
+	}{
+		{ref: "nginx:1.27", want: true},
+		{ref: "quay.io/argoproj/argocd:v2", want: true},
+		{ref: "redis@" + digest64, want: true},
+		{ref: "", want: false},
+		{ref: "not a ref", want: false},
+		{ref: "{{ .Values.image }}", want: false},
+		{ref: "a\nb", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.ref, func(t *testing.T) {
+			assert.Equal(t, tt.want, images.ValidRef(tt.ref))
 		})
 	}
 }
