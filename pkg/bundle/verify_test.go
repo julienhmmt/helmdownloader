@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -161,6 +162,83 @@ func buildTestBundle(t *testing.T, name string, imgs []ImageEntry) string {
 	})
 	require.NoError(t, err)
 	return path
+}
+
+func TestVerify_RejectsOversizedChecksums(t *testing.T) {
+	old := maxMetadataFileSize
+	maxMetadataFileSize = 64
+	t.Cleanup(func() { maxMetadataFileSize = old })
+	dir := t.TempDir()
+	path := filepath.Join(dir, "oversized-sums.tar.gz")
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	gw := gzip.NewWriter(f)
+	tw := tar.NewWriter(gw)
+	blob := strings.Repeat("a", 200)
+	hdr := &tar.Header{Name: "sha256sums.txt", Mode: 0o644, Size: int64(len(blob))}
+	require.NoError(t, tw.WriteHeader(hdr))
+	_, err = tw.Write([]byte(blob))
+	require.NoError(t, err)
+	require.NoError(t, tw.Close())
+	require.NoError(t, gw.Close())
+	require.NoError(t, f.Close())
+	err = Verify(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "sha256sums.txt")
+	assert.Contains(t, err.Error(), "exceeds")
+}
+
+func TestVerify_RejectsOversizedManifest(t *testing.T) {
+	old := maxMetadataFileSize
+	maxMetadataFileSize = 64
+	t.Cleanup(func() { maxMetadataFileSize = old })
+	dir := t.TempDir()
+	path := filepath.Join(dir, "oversized-manifest.tar.gz")
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	gw := gzip.NewWriter(f)
+	tw := tar.NewWriter(gw)
+	// Minimal valid sums so Verify gets past the missing-sums check if it ever
+	// read the oversized manifest first; entry order is whatever we write.
+	sums := "deadbeef  foo.txt\n"
+	require.NoError(t, tw.WriteHeader(&tar.Header{Name: "sha256sums.txt", Mode: 0o644, Size: int64(len(sums))}))
+	_, err = tw.Write([]byte(sums))
+	require.NoError(t, err)
+	blob := strings.Repeat("m", 200)
+	require.NoError(t, tw.WriteHeader(&tar.Header{Name: "manifest.json", Mode: 0o644, Size: int64(len(blob))}))
+	_, err = tw.Write([]byte(blob))
+	require.NoError(t, err)
+	require.NoError(t, tw.Close())
+	require.NoError(t, gw.Close())
+	require.NoError(t, f.Close())
+	err = Verify(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "manifest.json")
+	assert.Contains(t, err.Error(), "exceeds")
+}
+
+func TestDiff_RejectsOversizedManifest(t *testing.T) {
+	old := maxMetadataFileSize
+	maxMetadataFileSize = 64
+	t.Cleanup(func() { maxMetadataFileSize = old })
+	dir := t.TempDir()
+	path := filepath.Join(dir, "oversized-diff.tar.gz")
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	gw := gzip.NewWriter(f)
+	tw := tar.NewWriter(gw)
+	blob := strings.Repeat("d", 200)
+	require.NoError(t, tw.WriteHeader(&tar.Header{Name: "manifest.json", Mode: 0o644, Size: int64(len(blob))}))
+	_, err = tw.Write([]byte(blob))
+	require.NoError(t, err)
+	require.NoError(t, tw.Close())
+	require.NoError(t, gw.Close())
+	require.NoError(t, f.Close())
+	ok := buildTestBundle(t, "b", []ImageEntry{{SourceRef: "x:1", Digest: "sha256:aaa"}})
+	_, err = Diff(path, ok)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "manifest.json")
+	assert.Contains(t, err.Error(), "exceeds")
 }
 
 // TestVerify_LargeBundleDoesNotLoadImagesIntoMemory guards the streaming
