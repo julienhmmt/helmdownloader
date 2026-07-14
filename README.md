@@ -46,14 +46,15 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 
 | Screen | Keys | Description |
 | ------ | ---- | ------------ |
-| **Search** | `Enter` to search, `Ctrl+T` theme, `Esc` to quit | Type a chart name to search ArtifactHub |
-| **Results** | `Enter` select, `/` fuzzy, `s` sort field, `o` sort dir, `f` field, `F` value, `Tab` cycle values, `Ctrl+T` theme, `Esc` back | Browse matching charts; official/deprecated badges on title; meta line shows stars, repo, publisher, app |
-| **Filter** | `Enter` apply, `Tab` cycle values, `Ctrl+T` theme, `Esc` cancel | Type a substring to filter by author or company |
-| **Versions** | `Enter` to select, `/` to filter, `Ctrl+T` theme, `Esc` to back | Pick a chart version |
-| **Review** | `Space` toggle, `a` add, `d` delete, `j`/`k` move, `PgUp`/`PgDn` (or `Ctrl+u`/`Ctrl+d`) page, `g`/`G` jump, `Enter` download, `Ctrl+T` theme, `Esc` back | Review auto-discovered images; long lists are windowed |
-| **Add Image** | `Enter` confirm, `Ctrl+T` theme, `Esc` cancel | Manually add an image reference |
-| **Download** | `Esc` cancel (back to review or partial results), `Ctrl+T` theme, `Ctrl+C` quit | Pulls images; partial successes are kept |
-| **Done** | `n` new bundle, `Ctrl+T` theme, `q` quit | Path, image counts, size, and next steps (`verify` / extract) |
+| **Search** | `Enter` to search, `Ctrl+T` themes, `Esc` to quit | Type a chart name to search ArtifactHub |
+| **Results** | `Enter` select, `/` fuzzy, `s` sort field, `o` sort dir, `f` field, `F` value, `Tab` cycle values, `Ctrl+T` themes, `Esc` back | Browse matching charts; official/deprecated badges on title; meta line shows stars, repo, publisher, app |
+| **Filter** | `Enter` apply, `Tab` cycle values, `Ctrl+T` themes, `Esc` cancel | Type a substring to filter by author or company |
+| **Versions** | `Enter` to select, `/` to filter, `Ctrl+T` themes, `Esc` to back | Pick a chart version |
+| **Review** | `Space` toggle, `a` add, `d` delete, `j`/`k` move, `PgUp`/`PgDn` (or `Ctrl+u`/`Ctrl+d`) page, `g`/`G` jump, `Enter` download, `Ctrl+T` themes, `Esc` back | Review auto-discovered images; long lists are windowed |
+| **Add Image** | `Enter` confirm, `Ctrl+T` themes, `Esc` cancel | Manually add an image reference |
+| **Download** | `Esc` cancel (back to review or partial results), `Ctrl+T` themes, `Ctrl+C` quit | Pulls images; partial successes are kept |
+| **Done** | `n` new bundle, `Ctrl+T` themes, `q` quit | Path, image counts, size, and next steps (`verify` / extract) |
+| **Theme** | `j`/`k` move, `1`–`6` jump, `Enter` apply, `Esc` cancel | Pick a palette with live preview (`Ctrl+T` from most screens) |
 
 ### Sorting and Filtering Results
 
@@ -104,7 +105,7 @@ The status line reports the active `sort:`, `filter:`, and the count of charts s
 | `-log-file` | `helmdownloader.log` | Path for log output |
 | `-export-images` | (none) | Write the discovered image list (JSON) to this path after rendering, for security review |
 | `-import-images` | (none) | Read an approved image list (JSON) from this path at download time, overriding the discovered set |
-| `-theme` | `auto` | TUI theme: `auto` (follow the terminal background), `light`, or `dark`. Forced light/dark also set a matching terminal background. Press `Ctrl+T` in the TUI to toggle light/dark at any time |
+| `-theme` | `auto` | TUI theme: `auto` (follow terminal), `light`, `dark`, `high-contrast`, `ocean`, or `matrix`. Named themes set a matching terminal background. Press `Ctrl+T` in the TUI to open the theme menu |
 
 ### Configuration File
 
@@ -124,7 +125,7 @@ https_proxy: "http://proxy.domain.local:3128"
 helm_bin: "helm"
 artifacthub_url: "https://artifacthub.io"
 search_limit: 20
-theme: "auto"                # auto | light | dark — force a TUI palette
+theme: "auto"                # auto | light | dark | high-contrast | ocean | matrix
 verbose: true
 log_level: "debug"
 log_file: "helmdownloader.log"

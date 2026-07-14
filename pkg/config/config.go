@@ -12,10 +12,23 @@ import (
 
 // Supported TUI theme names.
 const (
-	ThemeAuto  = "auto"
-	ThemeLight = "light"
-	ThemeDark  = "dark"
+	ThemeAuto         = "auto"
+	ThemeLight        = "light"
+	ThemeDark         = "dark"
+	ThemeHighContrast = "high-contrast"
+	ThemeOcean        = "ocean"
+	ThemeMatrix       = "matrix"
 )
+
+// ThemeMenu is the order of themes shown in the TUI theme picker (Ctrl+T).
+var ThemeMenu = []string{
+	ThemeAuto,
+	ThemeLight,
+	ThemeDark,
+	ThemeHighContrast,
+	ThemeOcean,
+	ThemeMatrix,
+}
 
 // Config holds all tunable settings for the application.
 type Config struct {
@@ -61,8 +74,9 @@ type Config struct {
 	// directory's filesystem before a download starts. 0 disables the check.
 	MinFreeDiskMB int `yaml:"min_free_disk_mb"`
 	// Theme selects the TUI palette: "auto" (default, follow the terminal),
-	// "light", or "dark". Forced light/dark also set a matching terminal
-	// background so adaptive text remains readable.
+	// "light", "dark", "high-contrast", "ocean", or "matrix". Named themes
+	// (everything except auto) also set a matching terminal background so
+	// adaptive text remains readable.
 	Theme string `yaml:"theme"`
 	// Verbose enables detailed logging to a file.
 	Verbose bool `yaml:"verbose"`
@@ -105,10 +119,10 @@ func Default() Config {
 // ValidateTheme reports whether name is a supported TUI theme.
 func ValidateTheme(name string) error {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "", ThemeAuto, ThemeLight, ThemeDark:
+	case "", ThemeAuto, ThemeLight, ThemeDark, ThemeHighContrast, ThemeOcean, ThemeMatrix:
 		return nil
 	default:
-		return fmt.Errorf("unsupported theme %q (want auto, light, or dark)", name)
+		return fmt.Errorf("unsupported theme %q (want auto, light, dark, high-contrast, ocean, or matrix)", name)
 	}
 }
 
@@ -119,6 +133,22 @@ func NormalizeTheme(name string) string {
 		return ThemeAuto
 	}
 	return n
+}
+
+// ThemeMenuIndex returns the index of name in ThemeMenu, or 0 (auto) if unknown.
+func ThemeMenuIndex(name string) int {
+	n := NormalizeTheme(name)
+	for i, t := range ThemeMenu {
+		if t == n {
+			return i
+		}
+	}
+	return 0
+}
+
+// ThemeIsForced reports whether name paints a fixed palette (not auto).
+func ThemeIsForced(name string) bool {
+	return NormalizeTheme(name) != ThemeAuto
 }
 
 // Load reads configuration from path, falling back to defaults for any

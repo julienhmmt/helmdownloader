@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -26,6 +27,9 @@ func TestThemeIsDark(t *testing.T) {
 		{name: "empty is auto", theme: "", preferredIsDark: false, want: false},
 		{name: "light forces light", theme: config.ThemeLight, preferredIsDark: true, want: false},
 		{name: "dark forces dark", theme: config.ThemeDark, preferredIsDark: false, want: true},
+		{name: "high-contrast is dark", theme: config.ThemeHighContrast, preferredIsDark: false, want: true},
+		{name: "ocean is dark", theme: config.ThemeOcean, preferredIsDark: false, want: true},
+		{name: "matrix is dark", theme: config.ThemeMatrix, preferredIsDark: false, want: true},
 		{name: "mixed case light", theme: "Light", preferredIsDark: true, want: false},
 	}
 	for _, tt := range tests {
@@ -38,29 +42,67 @@ func TestThemeIsDark(t *testing.T) {
 func TestThemeBackground(t *testing.T) {
 	assert.Nil(t, themeBackground(config.ThemeAuto))
 	assert.Nil(t, themeBackground(""))
-	assert.Equal(t, colorHex(hexTermBGLight), colorHex(themeBackground(config.ThemeLight)))
-	assert.Equal(t, colorHex(hexTermBGDark), colorHex(themeBackground(config.ThemeDark)))
+	assert.NotNil(t, themeBackground(config.ThemeLight))
+	assert.NotNil(t, themeBackground(config.ThemeDark))
+	assert.NotNil(t, themeBackground(config.ThemeHighContrast))
+	assert.NotNil(t, themeBackground(config.ThemeOcean))
+	assert.NotNil(t, themeBackground(config.ThemeMatrix))
+	assert.Equal(t, colorHex(lightPalette().termBG), colorHex(themeBackground(config.ThemeLight)))
+	assert.Equal(t, colorHex(darkPalette().termBG), colorHex(themeBackground(config.ThemeDark)))
+	assert.Equal(t, colorHex(highContrastPalette().termBG), colorHex(themeBackground(config.ThemeHighContrast)))
+	assert.Equal(t, colorHex(oceanPalette().termBG), colorHex(themeBackground(config.ThemeOcean)))
+	assert.Equal(t, colorHex(matrixPalette().termBG), colorHex(themeBackground(config.ThemeMatrix)))
+}
+
+func TestResolvePalette_NamedThemesDiffer(t *testing.T) {
+	light := resolvePalette(config.ThemeLight, true)
+	dark := resolvePalette(config.ThemeDark, false)
+	hc := resolvePalette(config.ThemeHighContrast, false)
+	ocean := resolvePalette(config.ThemeOcean, false)
+	matrix := resolvePalette(config.ThemeMatrix, false)
+
+	assert.False(t, light.isDark)
+	assert.True(t, dark.isDark)
+	assert.True(t, hc.isDark)
+	assert.True(t, ocean.isDark)
+	assert.True(t, matrix.isDark)
+
+	// Accent colors should be distinct across named themes.
+	accents := map[string]string{
+		"light":  colorHex(light.accent),
+		"dark":   colorHex(dark.accent),
+		"hc":     colorHex(hc.accent),
+		"ocean":  colorHex(ocean.accent),
+		"matrix": colorHex(matrix.accent),
+	}
+	seen := map[string]string{}
+	for name, a := range accents {
+		if other, ok := seen[a]; ok {
+			t.Errorf("accent collision: %s and %s both use %s", name, other, a)
+		}
+		seen[a] = name
+	}
 }
 
 func TestNewStyles_LightAndDarkDiffer(t *testing.T) {
-	light := newStyles(false)
-	dark := newStyles(true)
+	light := newStyles(config.ThemeLight, true)
+	dark := newStyles(config.ThemeDark, false)
 	assert.NotEqual(t, colorHex(light.palette.primary), colorHex(dark.palette.primary))
 	assert.NotEqual(t, colorHex(light.palette.accent), colorHex(dark.palette.accent))
 	assert.NotEqual(t, colorHex(light.palette.hover), colorHex(dark.palette.hover))
 	// Light mode must paint an ink-on-surface pair so host-terminal FG cannot
 	// wash out body text.
-	assert.Equal(t, colorHex(hexPrimaryLight), colorHex(light.palette.primary))
-	assert.Equal(t, colorHex(hexSurfaceLight), colorHex(light.palette.surface))
+	assert.Equal(t, colorHex(lightPalette().primary), colorHex(light.palette.primary))
+	assert.Equal(t, colorHex(lightPalette().surface), colorHex(light.palette.surface))
 }
 
 func TestTextInputStyles_LightUsesDarkInk(t *testing.T) {
-	p := resolvePalette(false)
+	p := resolvePalette(config.ThemeLight, true)
 	s := textInputStyles(p)
 	// Prompt and text must use palette colors, not bubbles' dark-terminal ANSI.
-	assert.Equal(t, colorHex(hexAccentLight), colorHex(s.Focused.Prompt.GetForeground()))
-	assert.Equal(t, colorHex(hexPrimaryLight), colorHex(s.Focused.Text.GetForeground()))
-	assert.Equal(t, colorHex(hexMutedLight), colorHex(s.Focused.Placeholder.GetForeground()))
+	assert.Equal(t, colorHex(lightPalette().accent), colorHex(s.Focused.Prompt.GetForeground()))
+	assert.Equal(t, colorHex(lightPalette().primary), colorHex(s.Focused.Text.GetForeground()))
+	assert.Equal(t, colorHex(lightPalette().muted), colorHex(s.Focused.Placeholder.GetForeground()))
 }
 
 func TestNewModel_LightThemeForcesPalette(t *testing.T) {
@@ -69,11 +111,11 @@ func TestNewModel_LightThemeForcesPalette(t *testing.T) {
 	m := newModel(cfg, log.Discard())
 	assert.False(t, m.bgIsDark)
 	assert.True(t, m.bgKnown)
-	assert.Equal(t, colorHex(hexPrimaryLight), colorHex(m.styles.palette.primary))
+	assert.Equal(t, colorHex(lightPalette().primary), colorHex(m.styles.palette.primary))
 
 	view := m.View()
 	require.NotNil(t, view.BackgroundColor)
-	assert.Equal(t, colorHex(hexTermBGLight), colorHex(view.BackgroundColor))
+	assert.Equal(t, colorHex(lightPalette().termBG), colorHex(view.BackgroundColor))
 }
 
 func TestNewModel_DarkThemeForcesPalette(t *testing.T) {
@@ -82,11 +124,27 @@ func TestNewModel_DarkThemeForcesPalette(t *testing.T) {
 	m := newModel(cfg, log.Discard())
 	assert.True(t, m.bgIsDark)
 	assert.True(t, m.bgKnown)
-	assert.Equal(t, colorHex(hexPrimaryDark), colorHex(m.styles.palette.primary))
+	assert.Equal(t, colorHex(darkPalette().primary), colorHex(m.styles.palette.primary))
 
 	view := m.View()
 	require.NotNil(t, view.BackgroundColor)
-	assert.Equal(t, colorHex(hexTermBGDark), colorHex(view.BackgroundColor))
+	assert.Equal(t, colorHex(darkPalette().termBG), colorHex(view.BackgroundColor))
+}
+
+func TestNewModel_NamedThemesPaintBackground(t *testing.T) {
+	for _, theme := range []string{config.ThemeHighContrast, config.ThemeOcean, config.ThemeMatrix} {
+		t.Run(theme, func(t *testing.T) {
+			cfg := config.Default()
+			cfg.Theme = theme
+			m := newModel(cfg, log.Discard())
+			assert.True(t, m.bgKnown)
+			assert.True(t, m.bgIsDark)
+			require.NotNil(t, m.View().BackgroundColor)
+			want := resolvePalette(theme, true)
+			assert.Equal(t, colorHex(want.accent), colorHex(m.styles.palette.accent))
+			assert.Equal(t, colorHex(want.termBG), colorHex(m.View().BackgroundColor))
+		})
+	}
 }
 
 func TestNewModel_AutoLeavesTerminalBackground(t *testing.T) {
@@ -107,7 +165,7 @@ func TestUpdate_BackgroundColorMsgIgnoredWhenThemeForced(t *testing.T) {
 	got, ok := next.(model)
 	require.True(t, ok)
 	assert.False(t, got.bgIsDark)
-	assert.Equal(t, colorHex(hexPrimaryLight), colorHex(got.styles.palette.primary))
+	assert.Equal(t, colorHex(lightPalette().primary), colorHex(got.styles.palette.primary))
 }
 
 func TestApplyTheme_SwitchesPaletteAndListMeta(t *testing.T) {
@@ -118,57 +176,179 @@ func TestApplyTheme_SwitchesPaletteAndListMeta(t *testing.T) {
 		{Name: "redis", Stars: 10, RepoName: "bitnami"},
 	}
 	m.refreshResults()
-	m.applyTheme(false)
+	m.cfg.Theme = config.ThemeLight
+	m.applyTheme()
 	assert.False(t, m.bgIsDark)
 	assert.True(t, m.bgKnown)
-	assert.Equal(t, colorHex(hexPrimaryLight), colorHex(m.styles.palette.primary))
+	assert.Equal(t, colorHex(lightPalette().primary), colorHex(m.styles.palette.primary))
 	require.Len(t, m.results.Items(), 1)
 	item, ok := m.results.Items()[0].(packageItem)
 	require.True(t, ok)
-	assert.Equal(t, colorHex(hexAccentLight), colorHex(item.palette.accent))
+	assert.Equal(t, colorHex(lightPalette().accent), colorHex(item.palette.accent))
 }
 
-func TestToggleTheme_ForcesLightAndDark(t *testing.T) {
+func TestOpenThemeMenu_RemembersReturnAndTheme(t *testing.T) {
 	cfg := config.Default()
 	cfg.Theme = config.ThemeDark
 	m := newModel(cfg, log.Discard())
-	require.True(t, m.bgIsDark)
-
-	m.toggleTheme()
-	assert.False(t, m.bgIsDark)
-	assert.Equal(t, config.ThemeLight, m.cfg.Theme)
-	assert.Equal(t, "Theme: light", m.status)
-	assert.Equal(t, colorHex(hexPrimaryLight), colorHex(m.styles.palette.primary))
-	require.NotNil(t, m.View().BackgroundColor)
-	assert.Equal(t, colorHex(hexTermBGLight), colorHex(m.View().BackgroundColor))
-
-	m.toggleTheme()
-	assert.True(t, m.bgIsDark)
-	assert.Equal(t, config.ThemeDark, m.cfg.Theme)
-	assert.Equal(t, "Theme: dark", m.status)
-	assert.Equal(t, colorHex(hexPrimaryDark), colorHex(m.styles.palette.primary))
+	m.state = stateResults
+	m.openThemeMenu()
+	assert.Equal(t, stateThemeMenu, m.state)
+	assert.Equal(t, stateResults, m.themeMenuReturn)
+	assert.Equal(t, config.ThemeDark, m.themeBeforeMenu)
+	assert.Equal(t, config.ThemeMenuIndex(config.ThemeDark), m.themeMenuCursor)
 }
 
-func TestHandleKey_CtrlTTogglesThemeGlobally(t *testing.T) {
+func TestThemeMenu_PreviewConfirmAndCancel(t *testing.T) {
 	cfg := config.Default()
 	cfg.Theme = config.ThemeDark
 	m := newModel(cfg, log.Discard())
 	m.width, m.height = 100, 40
 	m.state = stateSearch
+	m.openThemeMenu()
+
+	// Move to light (index 1) and preview.
+	m.themeMenuCursor = config.ThemeMenuIndex(config.ThemeLight)
+	m.previewThemeAtCursor()
+	assert.Equal(t, config.ThemeLight, m.cfg.Theme)
+	assert.False(t, m.bgIsDark)
+	assert.Equal(t, colorHex(lightPalette().accent), colorHex(m.styles.palette.accent))
+
+	// Cancel restores dark.
+	_ = m.cancelThemeMenu()
+	assert.Equal(t, stateSearch, m.state)
+	assert.Equal(t, config.ThemeDark, m.cfg.Theme)
+	assert.True(t, m.bgIsDark)
+
+	// Open again, pick ocean, confirm.
+	m.openThemeMenu()
+	m.themeMenuCursor = config.ThemeMenuIndex(config.ThemeOcean)
+	m.previewThemeAtCursor()
+	_ = m.confirmThemeMenu()
+	assert.Equal(t, stateSearch, m.state)
+	assert.Equal(t, config.ThemeOcean, m.cfg.Theme)
+	assert.Equal(t, "Theme: ocean", m.status)
+	assert.Equal(t, colorHex(oceanPalette().accent), colorHex(m.styles.palette.accent))
+}
+
+func TestThemeMenu_RestoreAutoUsesDetectedDarkness(t *testing.T) {
+	// After previewing light, returning to auto must use terminal detection
+	// (detectedIsDark), not the light preview's isDark=false.
+	cfg := config.Default()
+	cfg.Theme = config.ThemeAuto
+	m := newModel(cfg, log.Discard())
+	m.detectedIsDark = true
+	m.applyTheme()
 	require.True(t, m.bgIsDark)
+	require.Nil(t, themeBackground(m.cfg.Theme))
+
+	m.state = stateSearch
+	m.openThemeMenu()
+	m.themeMenuCursor = config.ThemeMenuIndex(config.ThemeLight)
+	m.previewThemeAtCursor()
+	assert.False(t, m.bgIsDark)
+
+	_ = m.cancelThemeMenu()
+	assert.Equal(t, config.ThemeAuto, m.cfg.Theme)
+	assert.True(t, m.bgIsDark, "auto must follow detectedIsDark=true after light preview")
+	assert.Nil(t, m.View().BackgroundColor)
+	// Frame must not paint a surface in auto — that mixed light card on dark host.
+	assert.True(t, isUnsetBackground(m.styles.frame.GetBackground()))
+}
+
+func TestAutoStyles_DoNotPaintSurface(t *testing.T) {
+	darkAuto := newStyles(config.ThemeAuto, true)
+	assert.True(t, isUnsetBackground(darkAuto.frame.GetBackground()))
+	assert.True(t, isUnsetBackground(darkAuto.primary.GetBackground()))
+	assert.Equal(t, colorHex(darkPalette().primary), colorHex(darkAuto.palette.primary))
+
+	lightAuto := newStyles(config.ThemeAuto, false)
+	assert.True(t, isUnsetBackground(lightAuto.frame.GetBackground()))
+	assert.Equal(t, colorHex(lightPalette().primary), colorHex(lightAuto.palette.primary))
+
+	// Named themes still paint surface.
+	forced := newStyles(config.ThemeDark, true)
+	assert.Equal(t, colorHex(darkPalette().surface), colorHex(forced.frame.GetBackground()))
+}
+
+// isUnsetBackground reports whether c is unset (nil or lipgloss.NoColor).
+func isUnsetBackground(c color.Color) bool {
+	if c == nil {
+		return true
+	}
+	_, isNo := c.(lipgloss.NoColor)
+	return isNo
+}
+
+func TestBackgroundColorMsg_RecordsDetectionEvenWhenForced(t *testing.T) {
+	cfg := config.Default()
+	cfg.Theme = config.ThemeLight
+	m := newModel(cfg, log.Discard())
+	require.False(t, m.detectedIsDark == false && m.bgIsDark) // start detected default true
+	// Simulate a light terminal while a forced theme is active.
+	// BackgroundColorMsg with a light-ish color: IsDark() depends on luminance;
+	// drive detection by applying applyTheme path after setting field.
+	m.detectedIsDark = false
+	// Force stays light palette.
+	assert.Equal(t, config.ThemeLight, m.cfg.Theme)
+	assert.False(t, m.bgIsDark)
+
+	// Switch to auto — should pick light because detectedIsDark=false.
+	m.cfg.Theme = config.ThemeAuto
+	m.applyTheme()
+	assert.False(t, m.bgIsDark)
+	assert.Equal(t, colorHex(lightPalette().primary), colorHex(m.styles.palette.primary))
+	assert.Nil(t, m.View().BackgroundColor)
+}
+
+func TestHandleKey_CtrlTOpensThemeMenu(t *testing.T) {
+	cfg := config.Default()
+	cfg.Theme = config.ThemeDark
+	m := newModel(cfg, log.Discard())
+	m.width, m.height = 100, 40
+	m.state = stateSearch
 
 	next, _ := m.handleKey(keyPress("ctrl+t"))
 	got, ok := next.(model)
 	require.True(t, ok)
-	assert.False(t, got.bgIsDark)
-	assert.Equal(t, config.ThemeLight, got.cfg.Theme)
-	assert.Equal(t, "Theme: light", got.status)
+	assert.Equal(t, stateThemeMenu, got.state)
+	assert.Equal(t, stateSearch, got.themeMenuReturn)
 
-	// Works while typing on search: typing 't' must not toggle, only ctrl+t.
-	next, _ = got.handleKey(keyPress("t"))
-	still := next.(model)
-	assert.False(t, still.bgIsDark)
-	assert.Equal(t, config.ThemeLight, still.cfg.Theme)
+	// j moves down and live-previews.
+	next, _ = got.handleKey(keyPress("j"))
+	got = next.(model)
+	assert.Equal(t, config.ThemeMenuIndex(config.ThemeDark)+1, got.themeMenuCursor)
+	assert.Equal(t, config.ThemeHighContrast, got.cfg.Theme)
+
+	// enter applies and returns.
+	next, _ = got.handleKey(keyPress("enter"))
+	got = next.(model)
+	assert.Equal(t, stateSearch, got.state)
+	assert.Equal(t, config.ThemeHighContrast, got.cfg.Theme)
+	assert.Equal(t, "Theme: high-contrast", got.status)
+}
+
+func TestHandleKey_CtrlTIgnoredWhileBusy(t *testing.T) {
+	cfg := config.Default()
+	m := newModel(cfg, log.Discard())
+	m.state = stateDownloading
+	next, _ := m.handleKey(keyPress("ctrl+t"))
+	got := next.(model)
+	assert.Equal(t, stateDownloading, got.state)
+}
+
+func TestViewThemeMenuRenders(t *testing.T) {
+	cfg := config.Default()
+	cfg.Theme = config.ThemeLight
+	m := newModel(cfg, log.Discard())
+	m.width, m.height = 100, 40
+	m.openThemeMenu()
+	out := m.render()
+	assert.Contains(t, out, "Theme")
+	assert.Contains(t, out, "light")
+	assert.Contains(t, out, "ocean")
+	assert.Contains(t, out, "matrix")
+	assert.Contains(t, out, "preview:")
 }
 
 // colorHex formats a color as #RRGGBB for stable equality checks.

@@ -8,6 +8,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/julienhmmt/helmdownloader/pkg/config"
 )
 
 // View renders the current screen, declaring the alt screen via the v2 tea.View.
@@ -49,6 +51,8 @@ func (m model) render() string {
 		return m.viewDone()
 	case stateError:
 		return m.viewError()
+	case stateThemeMenu:
+		return m.viewThemeMenu()
 	}
 	return ""
 }
@@ -60,7 +64,7 @@ func (m model) viewSearch() string {
 		"",
 		m.search.View(),
 	)
-	return m.screen("HelmDownloader", "airgap chart bundler", body, "enter search · ctrl+t theme · esc quit")
+	return m.screen("HelmDownloader", "airgap chart bundler", body, "enter search · ctrl+t themes · esc quit")
 }
 
 // viewBusy renders a centered spinner with a contextual label and cancel help.
@@ -72,7 +76,7 @@ func (m model) viewBusy() string {
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		fmt.Sprintf("%s %s", m.spinner.View(), m.styles.primary.Render(label)),
 		"",
-		m.renderHelp("esc cancel · ctrl+t theme · ctrl+c quit"),
+		m.renderHelp("esc cancel · ctrl+t themes · ctrl+c quit"),
 	)
 	return m.frame(body)
 }
@@ -98,9 +102,9 @@ func (m model) viewList(body string) string {
 // navigation controls, keeping the footer readable on narrow terminals.
 func (m model) listHelp() string {
 	if m.state == stateResults {
-		return "enter select · esc back · ctrl+t theme · ctrl+c quit\n/ fuzzy · s sort field · o sort dir · f field · F value · tab cycle values"
+		return "enter select · esc back · ctrl+t themes · ctrl+c quit\n/ fuzzy · s sort field · o sort dir · f field · F value · tab cycle values"
 	}
-	return "enter select · / filter · esc back · ctrl+t theme · ctrl+c quit"
+	return "enter select · / filter · esc back · ctrl+t themes · ctrl+c quit"
 }
 
 // renderHelp splits a help string on newlines, then on " · ", and renders each
@@ -206,12 +210,12 @@ func (m model) viewReview() string {
 		m.cfg.RegistryPrefix, m.cfg.Platform, m.cfg.OutputDir))
 	body := lipgloss.JoinVertical(lipgloss.Left, rows.String(), "", meta)
 	return m.screen(title, subtitle, body,
-		"space toggle · a add · d delete · j/k move · pgup/pgdn page · g/G jump · enter download · ctrl+t theme · esc back")
+		"space toggle · a add · d delete · j/k move · pgup/pgdn page · g/G jump · enter download · ctrl+t themes · esc back")
 }
 
 // viewAddImage renders the manual image entry prompt.
 func (m model) viewAddImage() string {
-	return m.screen("Add an image reference", "", m.addInput.View(), "enter add · ctrl+t theme · esc cancel")
+	return m.screen("Add an image reference", "", m.addInput.View(), "enter add · ctrl+t themes · esc cancel")
 }
 
 // viewDownloading renders the download progress screen: an aggregate bar
@@ -250,7 +254,7 @@ func (m model) viewDownloading() string {
 	}
 
 	body := lipgloss.JoinVertical(lipgloss.Left, lines...)
-	return m.screen("Downloading images", "", body, "esc cancel · ctrl+t theme · ctrl+c quit")
+	return m.screen("Downloading images", "", body, "esc cancel · ctrl+t themes · ctrl+c quit")
 }
 
 // miniBar renders a width-cell ASCII progress bar for (written/total).
@@ -375,7 +379,7 @@ func (m model) viewDone() string {
 		m.styles.muted.Render(fmt.Sprintf("  helmdownloader verify %s", m.bundlePath)),
 		m.styles.muted.Render(fmt.Sprintf("  tar xzf %s && ./load.sh", m.bundlePath)),
 		"",
-		m.renderHelp("n new bundle · ctrl+t theme · q quit"),
+		m.renderHelp("n new bundle · ctrl+t themes · q quit"),
 	)
 	return m.frame(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }
@@ -402,6 +406,65 @@ func (m model) viewError() string {
 	if m.err != nil {
 		lines = append(lines, m.err.Error())
 	}
-	lines = append(lines, "", m.renderHelp("n new bundle · ctrl+t theme · q quit"))
+	lines = append(lines, "", m.renderHelp("n new bundle · ctrl+t themes · q quit"))
 	return m.frame(lipgloss.JoinVertical(lipgloss.Left, lines...))
+}
+
+// viewThemeMenu renders the theme picker. Moving the cursor live-previews the
+// palette; Enter keeps it, Esc restores the previous theme.
+func (m model) viewThemeMenu() string {
+	var rows strings.Builder
+	for i, name := range themeMenuEntries() {
+		marker := "  "
+		line := fmt.Sprintf("%d  %s", i+1, name.label)
+		if name.id == m.themeBeforeMenu {
+			line += "  (was)"
+		}
+		if i == m.themeMenuCursor {
+			marker = "▸ "
+			rows.WriteString(m.styles.hover.Render(marker + line))
+		} else if name.id == config.NormalizeTheme(m.cfg.Theme) {
+			rows.WriteString(m.styles.selected.Render(marker + line))
+		} else {
+			rows.WriteString(m.styles.primary.Render(marker + line))
+		}
+		if i < len(config.ThemeMenu)-1 {
+			rows.WriteString("\n")
+		}
+	}
+	preview := m.styles.muted.Render("preview: " + config.NormalizeTheme(m.cfg.Theme))
+	body := lipgloss.JoinVertical(lipgloss.Left,
+		rows.String(),
+		"",
+		preview,
+	)
+	return m.screen("Theme", "choose a palette (live preview)", body,
+		"j/k move · 1-6 jump · enter apply · esc cancel")
+}
+
+// themeMenuEntry is one row in the theme picker.
+type themeMenuEntry struct {
+	id    string
+	label string
+}
+
+// themeMenuEntries returns display labels for config.ThemeMenu in order.
+func themeMenuEntries() []themeMenuEntry {
+	labels := map[string]string{
+		config.ThemeAuto:         "auto — follow terminal",
+		config.ThemeLight:        "light — cream & bronze",
+		config.ThemeDark:         "dark — slate & gold",
+		config.ThemeHighContrast: "high-contrast — black & white",
+		config.ThemeOcean:        "ocean — cool blue & cyan",
+		config.ThemeMatrix:       "matrix — green on black",
+	}
+	out := make([]themeMenuEntry, 0, len(config.ThemeMenu))
+	for _, id := range config.ThemeMenu {
+		label := labels[id]
+		if label == "" {
+			label = id
+		}
+		out = append(out, themeMenuEntry{id: id, label: label})
+	}
+	return out
 }

@@ -40,7 +40,7 @@ func TestViewRendersEveryScreen(t *testing.T) {
 	states := []state{
 		stateSearch, stateSearching, statePreparing, stateResults, stateFilterInput,
 		stateVersions, stateReview, stateAddImage, stateDownloading,
-		stateDownloadReview, stateBundling, stateDone, stateError,
+		stateDownloadReview, stateBundling, stateDone, stateError, stateThemeMenu,
 	}
 	for _, s := range states {
 		m := base
@@ -85,7 +85,7 @@ func TestViewReview_HoverSpansFullRow(t *testing.T) {
 }
 
 func TestHoverDelegate_SelectedTitleUsesListWidth(t *testing.T) {
-	p := resolvePalette(true)
+	p := resolvePalette(config.ThemeDark, true)
 	items := packagesToItems([]artifacthub.Package{
 		{Name: "short", Description: "d", Stars: 1},
 	}, p)
