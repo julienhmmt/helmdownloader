@@ -145,6 +145,8 @@ Use `-export-images` and `-import-images` to review the discovered image list wi
 ./helmdownloader -import-images images.json
 ```
 
+Import rejects invalid image references with a non-zero error before download so a bad edit fails closed at load time rather than after pull retries.
+
 The JSON format is an array of entries:
 
 ```json
