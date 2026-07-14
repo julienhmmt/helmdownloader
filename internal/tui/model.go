@@ -96,7 +96,17 @@ type model struct {
 	failures      []pipeline.ImageFailure
 	bundlePath    string
 	err           error
+	// status is a short, ephemeral line shown under the body (not an error
+	// state). Cleared on most navigation. Prefer status over stateError for
+	// recoverable UX (empty results, silent no-ops, soft validation).
+	status string
 }
+
+// setStatus stores a soft status message for the next render.
+func (m *model) setStatus(s string) { m.status = s }
+
+// clearStatus clears any soft status message.
+func (m *model) clearStatus() { m.status = "" }
 
 // newModel constructs the root model from cfg.
 func newModel(cfg config.Config, logger *log.Logger) model {
@@ -142,9 +152,10 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return model{
+	client, clientErr := artifacthub.New(cfg.ArtifactHubURL, cfg.HTTPSProxy, logger)
+	m := model{
 		cfg:           cfg,
-		client:        artifacthub.New(cfg.ArtifactHubURL, logger),
+		client:        client,
 		pipeline:      pipeline.New(cfg, logger),
 		styles:        newStyles(),
 		logger:        logger,
@@ -163,6 +174,11 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 		sortField:     sortStars,
 		sortDir:       sortDesc,
 	}
+	if clientErr != nil {
+		m.state = stateError
+		m.err = clientErr
+	}
+	return m
 }
 
 // Init starts the spinner ticking.

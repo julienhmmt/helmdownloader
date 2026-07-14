@@ -14,6 +14,7 @@ import (
 	"github.com/julienhmmt/helmdownloader/pkg/config"
 	"github.com/julienhmmt/helmdownloader/pkg/helm"
 	"github.com/julienhmmt/helmdownloader/pkg/log"
+	"github.com/julienhmmt/helmdownloader/pkg/version"
 )
 
 // stringSlice is a flag.Value that accumulates repeated flag occurrences, so
@@ -35,6 +36,9 @@ func main() {
 			return
 		case "diff":
 			runDiff(os.Args[2:])
+			return
+		case "version", "-version", "--version":
+			fmt.Println(version.String())
 			return
 		}
 	}
@@ -155,7 +159,8 @@ func createLogger(cfg config.Config) *log.Logger {
 		return log.Discard()
 	}
 	level := parseLogLevel(cfg.LogLevel)
-	f, err := os.OpenFile(cfg.LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	// 0o600 so image refs, proxy hosts, and chart names in logs are not world-readable.
+	f, err := os.OpenFile(cfg.LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: cannot open log file %s: %v\n", cfg.LogFile, err)
 		return log.Discard()

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/julienhmmt/helmdownloader/pkg/images"
 )
@@ -59,7 +60,10 @@ func importImages(path string) ([]images.Image, error) {
 	}
 	imgs := make([]images.Image, len(entries))
 	for i, e := range entries {
-		imgs[i] = images.Image{Ref: e.Ref, Selected: e.Selected}
+		if !images.ValidRef(e.Ref) {
+			return nil, fmt.Errorf("image list %s: entry %d: invalid image ref %q", path, i, e.Ref)
+		}
+		imgs[i] = images.Image{Ref: strings.TrimSpace(e.Ref), Selected: e.Selected}
 	}
 	return imgs, nil
 }

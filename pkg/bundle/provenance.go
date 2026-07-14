@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"time"
+
+	"github.com/julienhmmt/helmdownloader/pkg/version"
 )
 
 // tool is the producer name recorded in the provenance manifest.
@@ -15,6 +17,7 @@ const tool = "helmdownloader"
 // or diff a bundle on the airgapped side.
 type provenance struct {
 	Tool        string            `json:"tool"`
+	ToolVersion string            `json:"toolVersion,omitempty"`
 	CreatedAt   string            `json:"createdAt"`
 	Chart       provenanceChart   `json:"chart"`
 	Compression string            `json:"compression"`
@@ -39,6 +42,7 @@ type provenanceImage struct {
 func buildProvenance(spec Spec, chartArchive, compression string, now time.Time) ([]byte, error) {
 	p := provenance{
 		Tool:        tool,
+		ToolVersion: version.Version,
 		CreatedAt:   now.UTC().Format(time.RFC3339),
 		Chart:       provenanceChart{Name: spec.ChartName, Version: spec.ChartVersion, Archive: chartArchive},
 		Compression: compression,

@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
@@ -29,10 +30,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.filterField = filterNone
 		m.filterValue = ""
 		m.refreshResults()
+		if len(typed.packages) == 0 {
+			m.setStatus("No charts found. Try a different query.")
+		} else {
+			m.clearStatus()
+		}
 		return m, nil
 	case versionsMsg:
 		m.state = stateVersions
 		m.versions.SetItems(versionsToItems(typed.versions))
+		if len(typed.versions) == 0 {
+			m.setStatus("No versions returned for this chart.")
+		} else {
+			m.clearStatus()
+		}
 		return m, nil
 	case preparedMsg:
 		m.prepared = typed.prepared
@@ -277,6 +288,7 @@ func (m model) handleVersionsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
+		m.clearStatus()
 		m.state = stateVersions
 		return m, nil
 	case "up", "k":
@@ -310,6 +322,7 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.reviewImages[m.reviewCursor].Selected = !m.reviewImages[m.reviewCursor].Selected
 		}
 	case "a":
+		m.clearStatus()
 		m.addInput.SetValue("")
 		m.addInput.Focus()
 		m.state = stateAddImage
@@ -323,6 +336,7 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		if m.countSelected() == 0 {
+			m.setStatus("Select at least one image (space), or press a to add one.")
 			return m, nil
 		}
 		// If an approved image list was provided, it overrides the discovered
@@ -339,8 +353,10 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if m.countSelected() == 0 {
-			return m, nil // import may have deselected everything
+			m.setStatus("Select at least one image (space), or press a to add one.")
+			return m, nil
 		}
+		m.clearStatus()
 		m.prepared.Images = m.reviewImages
 		refs := selectedRefs(m.reviewImages)
 		m.entries, m.failures = nil, nil
@@ -387,17 +403,35 @@ func (m model) handleAddImageKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.reviewImages = append(m.reviewImages, images.Image{Ref: ref, Selected: true})
 			m.reviewCursor = len(m.reviewImages) - 1
 		}
+		if !looksLikeImageRef(ref) {
+			// Stay on add screen so the user can edit; do not abort review.
+			m.setStatus("Invalid image reference.")
+			return m, nil
+		}
+		m.reviewImages = append(m.reviewImages, images.Image{Ref: ref, Selected: true})
 		m.addInput.Blur()
+		m.clearStatus()
 		m.state = stateReview
 		m.ensureReviewCursorVisible()
 		return m, nil
 	case "esc":
 		m.addInput.Blur()
+		m.clearStatus()
 		m.state = stateReview
 		m.ensureReviewCursorVisible()
 		return m, nil
 	}
 	return m.updateComponents(msg)
+}
+
+// looksLikeImageRef applies light heuristics for manual add until a stricter
+// images.ValidRef lands (plan 004). Matches discovery's isImageRef spirit.
+func looksLikeImageRef(ref string) bool {
+	ref = strings.TrimSpace(ref)
+	if ref == "" || strings.ContainsAny(ref, " \t\n{}") {
+		return false
+	}
+	return strings.Contains(ref, ":") || strings.Contains(ref, "@") || strings.Contains(ref, "/")
 }
 
 // handleEndKey processes the terminal done/error screens.
