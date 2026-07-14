@@ -48,6 +48,19 @@ func TestNewStyles_LightAndDarkDiffer(t *testing.T) {
 	assert.NotEqual(t, colorHex(light.palette.primary), colorHex(dark.palette.primary))
 	assert.NotEqual(t, colorHex(light.palette.accent), colorHex(dark.palette.accent))
 	assert.NotEqual(t, colorHex(light.palette.hover), colorHex(dark.palette.hover))
+	// Light mode must paint an ink-on-surface pair so host-terminal FG cannot
+	// wash out body text.
+	assert.Equal(t, colorHex(hexPrimaryLight), colorHex(light.palette.primary))
+	assert.Equal(t, colorHex(hexSurfaceLight), colorHex(light.palette.surface))
+}
+
+func TestTextInputStyles_LightUsesDarkInk(t *testing.T) {
+	p := resolvePalette(false)
+	s := textInputStyles(p)
+	// Prompt and text must use palette colors, not bubbles' dark-terminal ANSI.
+	assert.Equal(t, colorHex(hexAccentLight), colorHex(s.Focused.Prompt.GetForeground()))
+	assert.Equal(t, colorHex(hexPrimaryLight), colorHex(s.Focused.Text.GetForeground()))
+	assert.Equal(t, colorHex(hexMutedLight), colorHex(s.Focused.Placeholder.GetForeground()))
 }
 
 func TestNewModel_LightThemeForcesPalette(t *testing.T) {

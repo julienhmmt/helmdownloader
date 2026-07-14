@@ -146,15 +146,18 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 
 	search := textinput.New()
 	search.Placeholder = "search charts (e.g. argo-cd, mattermost)…"
+	search.SetStyles(textInputStyles(styles.palette))
 	search.Focus()
 	search.CharLimit = 100
 
 	add := textinput.New()
 	add.Placeholder = "registry/repo:tag"
+	add.SetStyles(textInputStyles(styles.palette))
 	add.CharLimit = 200
 
 	filter := textinput.New()
 	filter.Placeholder = "substring (e.g. bitnami, argo)…"
+	filter.SetStyles(textInputStyles(styles.palette))
 	filter.CharLimit = 100
 
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(styles.palette.accent).Padding(0, 1)
@@ -229,6 +232,12 @@ func (m *model) applyTheme(bgIsDark bool) {
 	m.results.Styles.Title = titleStyle
 	m.versions.SetDelegate(newHoverDelegate(m.styles.palette))
 	m.versions.Styles.Title = titleStyle
+	// Text inputs keep dark-default ANSI styles unless re-themed — fix that so
+	// light mode does not show a white prompt/placeholder on cream.
+	inputStyles := textInputStyles(m.styles.palette)
+	m.search.SetStyles(inputStyles)
+	m.addInput.SetStyles(inputStyles)
+	m.filter.SetStyles(inputStyles)
 	// Re-stamp package item palettes so list meta colors match.
 	if len(m.allPackages) > 0 {
 		m.refreshResults()

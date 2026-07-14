@@ -56,7 +56,7 @@ func (m model) render() string {
 // viewSearch renders the search prompt.
 func (m model) viewSearch() string {
 	body := lipgloss.JoinVertical(lipgloss.Left,
-		"Search ArtifactHub for a Helm chart:",
+		m.styles.primary.Render("Search ArtifactHub for a Helm chart:"),
 		"",
 		m.search.View(),
 	)
@@ -70,7 +70,7 @@ func (m model) viewBusy() string {
 		label = fmt.Sprintf("Pulling and rendering %s %s…", m.selectedPkg.Name, m.selectedVersion)
 	}
 	body := lipgloss.JoinVertical(lipgloss.Left,
-		fmt.Sprintf("%s %s", m.spinner.View(), label),
+		fmt.Sprintf("%s %s", m.spinner.View(), m.styles.primary.Render(label)),
 		"",
 		m.renderHelp("esc cancel · ctrl+t theme · ctrl+c quit"),
 	)
@@ -224,7 +224,7 @@ func (m model) viewDownloading() string {
 	}
 
 	lines := []string{
-		fmt.Sprintf("%s  %d/%d", m.progress.ViewAs(percent), m.downCurrent, m.downTotal),
+		fmt.Sprintf("%s  %s", m.progress.ViewAs(percent), m.styles.primary.Render(fmt.Sprintf("%d/%d", m.downCurrent, m.downTotal))),
 		"",
 	}
 
@@ -291,7 +291,7 @@ func (m model) byteLabel(written, total int64) string {
 // Bundle ignores ctx, so Esc is a no-op; only ctrl+c aborts the whole process.
 func (m model) viewBundling() string {
 	body := lipgloss.JoinVertical(lipgloss.Left,
-		fmt.Sprintf("%s Assembling bundle…", m.spinner.View()),
+		fmt.Sprintf("%s %s", m.spinner.View(), m.styles.primary.Render("Assembling bundle…")),
 		"",
 		m.renderHelp("ctrl+c quit"),
 	)
