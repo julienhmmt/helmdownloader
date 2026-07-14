@@ -168,12 +168,60 @@ func Load(path string) (Config, error) {
 	return cfg, nil
 }
 
-// DefaultPath returns the conventional config file location under the user's
-// config directory, or an empty string when it cannot be determined.
+// DefaultPath returns the config file path to load when -config is not set.
+//
+// Preference:
+//  1. An existing file among the candidates (so either convention works).
+//  2. Otherwise the primary create path: $XDG_CONFIG_HOME if set, else
+//     ~/.config/helmdownloader/config.yaml (matches docs and common CLI
+//     tooling). os.UserConfigDir is only a create fallback when home is
+//     unknown — on macOS that is ~/Library/Application Support, which is
+//     not where users expect a terminal tool config.
+//
+// Candidates checked for existence (in order):
+//   - $XDG_CONFIG_HOME/helmdownloader/config.yaml (when XDG_CONFIG_HOME is set)
+//   - ~/.config/helmdownloader/config.yaml
+//   - $UserConfigDir/helmdownloader/config.yaml
 func DefaultPath() string {
-	dir, err := os.UserConfigDir()
-	if err != nil {
+	paths := candidateConfigPaths()
+	for _, p := range paths {
+		if fileExists(p) {
+			return p
+		}
+	}
+	if len(paths) == 0 {
 		return ""
 	}
-	return filepath.Join(dir, "helmdownloader", "config.yaml")
+	return paths[0]
+}
+
+// candidateConfigPaths returns unique candidate config paths in priority order.
+func candidateConfigPaths() []string {
+	out := make([]string, 0, 3)
+	seen := make(map[string]struct{}, 3)
+	add := func(p string) {
+		if p == "" {
+			return
+		}
+		if _, ok := seen[p]; ok {
+			return
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		add(filepath.Join(xdg, "helmdownloader", "config.yaml"))
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		add(filepath.Join(home, ".config", "helmdownloader", "config.yaml"))
+	}
+	if dir, err := os.UserConfigDir(); err == nil {
+		add(filepath.Join(dir, "helmdownloader", "config.yaml"))
+	}
+	return out
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

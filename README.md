@@ -109,7 +109,17 @@ The status line reports the active `sort:`, `filter:`, and the count of charts s
 
 ### Configuration File
 
-Create `~/.config/helmdownloader/config.yaml`:
+Create `~/.config/helmdownloader/config.yaml` (or pass `-config /path/to/file`).
+That path is preferred on all platforms. If it is missing, helmdownloader also
+looks at the OS config dir (on macOS: `~/Library/Application Support/helmdownloader/config.yaml`).
+A full annotated copy of every option lives in [`config.example.yaml`](./config.example.yaml):
+
+```bash
+mkdir -p ~/.config/helmdownloader
+cp config.example.yaml ~/.config/helmdownloader/config.yaml
+```
+
+Minimal example:
 
 ```yaml
 registry_prefix: "rgy01.domain.local"
@@ -126,10 +136,19 @@ helm_bin: "helm"
 artifacthub_url: "https://artifacthub.io"
 search_limit: 20
 theme: "auto"                # auto | light | dark | high-contrast | ocean | matrix
+registry_auth: false
+values_files: []
+set_values: []
+export_images: ""
+import_images: ""
 verbose: true
 log_level: "debug"
 log_file: "helmdownloader.log"
 ```
+
+CLI flags override the config file when set. Unset YAML fields keep built-in
+defaults. See `config.example.yaml` for field-by-field documentation, defaults,
+and the export/import security-review keys.
 
 ### Security Review Workflow
 
