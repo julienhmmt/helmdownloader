@@ -177,7 +177,7 @@ DOCKER_CONFIG=/path/to/creds ./helmdownloader -registry-auth
 ./helmdownloader verify argo-cd-1.0.0-bundle.tar.gz
 ```
 
-Checks bundle integrity without contacting any registry: re-hashes every file against `sha256sums.txt` and confirms `manifest.json` is well-formed. Exits 0 if intact, 1 on any mismatch, 2 on bad usage. Use this on the airgapped side after transfer, before running `load.sh`.
+Checks bundle integrity without contacting any registry: re-hashes every file listed in `sha256sums.txt` (including `load.sh`) and confirms `manifest.json` is well-formed with a non-empty digest for every image. Exits 0 if intact, 1 on any mismatch, 2 on bad usage. Use this on the airgapped side after transfer, before running `load.sh`.
 
 #### diff
 
@@ -200,7 +200,7 @@ images/
 images.txt                # manifest: source_ref  dest_ref  tar_name  digest
 manifest.json             # provenance: tool, chart, codec, images + digests
 sbom.spdx.json            # SPDX 2.3 SBOM: chart + images with pinned digests
-sha256sums.txt            # sha256 of every bundled file (sha256sum -c format)
+sha256sums.txt            # sha256 of every payload file including load.sh (sha256sum -c format)
 load.sh                   # verifies checksums, then loads and pushes every image
 ```
 
@@ -217,7 +217,7 @@ ENGINE=podman ./load.sh    # use podman instead
 DRY_RUN=1 ./load.sh        # print load/push commands without running them
 ```
 
-`load.sh` verifies `sha256sums.txt` before touching the registry, skips loading any image already present locally (idempotent re-runs), and honors `DRY_RUN=1` for a no-op preview.
+`load.sh` verifies `sha256sums.txt` (which covers all payload files including `load.sh` itself) before touching the registry, aborts if neither `sha256sum` nor `shasum` is available, skips loading any image already present locally (idempotent re-runs), and honors `DRY_RUN=1` for a no-op preview.
 
 ## Architecture
 
