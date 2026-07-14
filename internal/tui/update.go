@@ -38,6 +38,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.prepared = typed.prepared
 		m.reviewImages = typed.prepared.Images
 		m.reviewCursor = 0
+		m.reviewWarnAck = false
+		m.clearStatus()
 		m.state = stateReview
 		if err := exportImages(m.cfg.ExportImages, m.reviewImages); err != nil {
 			m.err = err
@@ -306,6 +308,12 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.countSelected() == 0 {
 			return m, nil
 		}
+		if warn := m.reviewSafetyWarning(); warn != "" && !m.reviewWarnAck {
+			m.reviewWarnAck = true
+			m.setStatus(warn)
+			return m, nil
+		}
+		m.clearStatus()
 		// If an approved image list was provided, it overrides the discovered
 		// set: only refs present in the import (and marked Selected) are pulled.
 		if m.cfg.ImportImages != "" {
@@ -430,4 +438,31 @@ func (m model) countSelected() int {
 		}
 	}
 	return count
+}
+
+// reviewSafetyWarning returns a progressive safety message when the selected
+// chart or version needs a second Enter confirmation. Empty means proceed.
+func (m model) reviewSafetyWarning() string {
+	if m.selectedPkg.Deprecated {
+		return "Chart is deprecated on ArtifactHub. Enter again to download anyway."
+	}
+	if m.selectedIsPrerelease() {
+		return "Selected version is a prerelease. Enter again to download anyway."
+	}
+	return ""
+}
+
+// selectedIsPrerelease reports whether the currently selected chart version was
+// marked prerelease in the versions list items.
+func (m model) selectedIsPrerelease() bool {
+	for _, it := range m.versions.Items() {
+		vi, ok := it.(versionItem)
+		if !ok {
+			continue
+		}
+		if vi.version.Version == m.selectedVersion {
+			return vi.version.Prerelease
+		}
+	}
+	return false
 }

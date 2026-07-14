@@ -47,7 +47,7 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 | Screen | Keys | Description |
 | ------ | ---- | ------------ |
 | **Search** | `Enter` to search, `Esc` to quit | Type a chart name to search ArtifactHub |
-| **Results** | `Enter` select, `/` fuzzy filter, `s` sort field, `o` sort direction, `f` filter field, `F` type filter, `Tab` cycle values, `Esc` back | Browse matching charts; each row shows stars, repo, publisher, app version, and description |
+| **Results** | `Enter` select, `/` fuzzy, `s` sort field, `o` sort dir, `f` field, `F` value, `Tab` cycle values, `Esc` back | Browse matching charts; official/deprecated badges on title; meta line shows stars, repo, publisher, app |
 | **Filter** | `Enter` apply, `Tab` cycle values, `Esc` cancel | Type a substring to filter by author or company |
 | **Versions** | `Enter` to select, `/` to filter, `Esc` to back | Pick a chart version |
 | **Review** | `Space` toggle, `a` add, `d` delete, `Enter` download, `Esc` back | Review auto-discovered images |

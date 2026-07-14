@@ -14,22 +14,25 @@ type packageItem struct {
 	pkg artifacthub.Package
 }
 
-// Title renders the package's primary line.
+// Title renders the package's primary line: name plus optional badges.
+// Badges are plain text (no lipgloss) so the list's FilterMatch still works.
 func (i packageItem) Title() string {
-	suffix := ""
-	if i.pkg.Deprecated {
-		suffix = " (deprecated)"
+	parts := []string{i.pkg.Name}
+	if i.pkg.Official {
+		parts = append(parts, "· official")
 	}
-	return i.pkg.Name + suffix
+	if i.pkg.Deprecated {
+		parts = append(parts, "(deprecated)")
+	}
+	return strings.Join(parts, " ")
 }
 
-// Description renders the package's secondary line: stars, metadata, and the
-// short description. Empty fields are omitted so the line never trails with
-// "app:" or a dangling separator.
+// Description renders the secondary meta line: stars, repo, publisher, and
+// optional app version. Free-text chart descriptions are omitted so the list
+// stays scannable under stress (operators can open ArtifactHub for prose).
 func (i packageItem) Description() string {
 	publisher := i.publisher()
 	star := lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render(fmt.Sprintf("★ %d", i.pkg.Stars))
-
 	metaStyle := lipgloss.NewStyle().Foreground(colorSecondary)
 	metaParts := []string{
 		metaStyle.Render("repo:" + i.pkg.RepoName),
@@ -39,14 +42,7 @@ func (i packageItem) Description() string {
 		metaParts = append(metaParts, metaStyle.Render("app:"+i.pkg.AppVersion))
 	}
 	sep := lipgloss.NewStyle().Foreground(colorFaint).Render(" · ")
-	meta := strings.Join(metaParts, sep)
-
-	if i.pkg.Description == "" {
-		return fmt.Sprintf("%s  %s", star, meta)
-	}
-	dot := lipgloss.NewStyle().Foreground(colorFaint).Render("· ")
-	desc := dot + lipgloss.NewStyle().Foreground(colorMuted).Render(i.pkg.Description)
-	return fmt.Sprintf("%s  %s  %s", star, meta, desc)
+	return fmt.Sprintf("%s  %s", star, strings.Join(metaParts, sep))
 }
 
 // publisher returns the best human-readable publisher name for the package.

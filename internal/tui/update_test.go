@@ -9,6 +9,7 @@ import (
 
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
 	"github.com/julienhmmt/helmdownloader/pkg/config"
+	"github.com/julienhmmt/helmdownloader/pkg/images"
 	"github.com/julienhmmt/helmdownloader/pkg/log"
 )
 
@@ -195,4 +196,23 @@ func TestVisiblePackages_RespectsSortAndFilter(t *testing.T) {
 	require.Len(t, got, 2) // redis + nginx
 	assert.Equal(t, "nginx", got[0].Name)
 	assert.Equal(t, "redis", got[1].Name)
+}
+
+func TestHandleReviewKey_DeprecatedRequiresSecondEnter(t *testing.T) {
+	m := newTestModel()
+	m.state = stateReview
+	m.selectedPkg = artifacthub.Package{Name: "old", Deprecated: true}
+	m.selectedVersion = "1.0.0"
+	m.reviewImages = []images.Image{{Ref: "nginx:1.27", Selected: true}}
+	got, cmd := m.handleReviewKey(keyPress("enter"))
+	m2 := got.(model)
+	assert.Equal(t, stateReview, m2.state)
+	assert.True(t, m2.reviewWarnAck)
+	assert.Contains(t, m2.status, "deprecated")
+	assert.Nil(t, cmd)
+
+	got, cmd = m2.handleReviewKey(keyPress("enter"))
+	m3 := got.(model)
+	assert.Equal(t, stateDownloading, m3.state)
+	assert.NotNil(t, cmd)
 }

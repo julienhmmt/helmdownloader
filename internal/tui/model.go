@@ -95,7 +95,19 @@ type model struct {
 	failures      []pipeline.ImageFailure
 	bundlePath    string
 	err           error
+	// status is a short, ephemeral line for soft feedback (deprecation confirm,
+	// recoverable UX). Not an error state.
+	status string
+	// reviewWarnAck tracks whether the user already acknowledged a progressive
+	// safety warning on the review screen (deprecated chart / prerelease).
+	reviewWarnAck bool
 }
+
+// setStatus stores a soft status message for the next render.
+func (m *model) setStatus(s string) { m.status = s }
+
+// clearStatus clears any soft status message.
+func (m *model) clearStatus() { m.status = "" }
 
 // newModel constructs the root model from cfg.
 func newModel(cfg config.Config, logger *log.Logger) model {
