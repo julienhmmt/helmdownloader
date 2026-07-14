@@ -5,7 +5,9 @@ package pipeline
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -253,9 +255,10 @@ func (p *Pipeline) Download(ctx context.Context, prepared Prepared, refs []strin
 					DestRef:   destRef,
 					Digest:    digest,
 				}}
-				// Record the digest beside the tarball so a later --resume run can
-				// reuse it without re-pulling and still pin the bundle.
-				writeDigestSidecar(tarPath, digest)
+				// Record registry digest + content hash beside the tarball so a
+				// later --resume run can reuse it without re-pulling and still
+				// pin the bundle with verified file bytes.
+				writeResumeSidecars(tarPath, digest)
 			}
 			mu.Unlock()
 
@@ -404,26 +407,51 @@ func (p *Pipeline) Bundle(prepared Prepared, pkg artifacthub.Package, version st
 	return bundlePath, nil
 }
 
-// digestSidecarPath returns the path of the file recording a tarball's digest.
+// digestSidecarPath returns the path of the file recording a tarball's
+// registry manifest digest.
 func digestSidecarPath(tarPath string) string {
 	return tarPath + ".digest"
 }
 
-// writeDigestSidecar records digest beside the tarball for later --resume runs.
-// Failure is non-fatal: the tarball is still valid, resume just won't repin it.
-func writeDigestSidecar(tarPath, digest string) {
-	if digest == "" {
-		return
-	}
-	_ = os.WriteFile(digestSidecarPath(tarPath), []byte(digest), 0o600)
+// contentHashSidecarPath returns the path of the file recording the sha256 of
+// the tarball bytes (resume integrity gate).
+func contentHashSidecarPath(tarPath string) string {
+	return tarPath + ".sha256"
 }
 
-// reusableTarball reports whether a complete tarball with a recorded digest
-// already exists at tarPath, returning that digest. A tarball is reusable only
-// when it is non-empty, carries a non-empty digest sidecar, and passes
-// tarballComplete — so a run killed mid-write (which leaves a truncated tar
-// with no sidecar) is re-pulled rather than silently bundled with an unpinned
-// digest. A rejection is logged at debug level so the cause is visible under -v.
+// fileSHA256 streams path and returns its hex-encoded sha256.
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// writeResumeSidecars records the registry manifest digest and a content hash
+// of the tarball for later --resume runs. Failure is non-fatal: the tarball is
+// still valid; resume just will not reuse it without both sidecars matching.
+func writeResumeSidecars(tarPath, registryDigest string) {
+	if registryDigest != "" {
+		_ = os.WriteFile(digestSidecarPath(tarPath), []byte(registryDigest), 0o600)
+	}
+	sum, err := fileSHA256(tarPath)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(contentHashSidecarPath(tarPath), []byte(sum), 0o600)
+}
+
+// reusableTarball reports whether a complete tarball with a recorded registry
+// digest and matching content-hash sidecar already exists at tarPath, returning
+// that registry digest. Reuse requires non-empty file, non-empty .digest,
+// matching .sha256 of file bytes, and tarballComplete — so a tampered or
+// truncated tar is re-pulled. A rejection is logged at debug level under -v.
 func (p *Pipeline) reusableTarball(tarPath string) (string, bool) {
 	info, err := os.Stat(tarPath)
 	if err != nil || info.IsDir() || info.Size() == 0 {
@@ -437,6 +465,16 @@ func (p *Pipeline) reusableTarball(tarPath string) (string, bool) {
 	digest := strings.TrimSpace(string(data))
 	if digest == "" {
 		p.logger.Debugf("resume: %s has empty digest sidecar, re-pulling", tarPath)
+		return "", false
+	}
+	wantContent, err := os.ReadFile(contentHashSidecarPath(tarPath))
+	if err != nil || strings.TrimSpace(string(wantContent)) == "" {
+		p.logger.Debugf("resume: %s missing content hash sidecar, re-pulling", tarPath)
+		return "", false
+	}
+	got, err := fileSHA256(tarPath)
+	if err != nil || got != strings.TrimSpace(string(wantContent)) {
+		p.logger.Debugf("resume: %s content hash mismatch, re-pulling", tarPath)
 		return "", false
 	}
 	if !tarballComplete(tarPath) {

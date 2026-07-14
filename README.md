@@ -92,7 +92,7 @@ The status line reports the active `sort:`, `filter:`, and the count of charts s
 | `-platform` | (from config) | Target platform for images, e.g. `linux/amd64` |
 | `-output` | (from config) | Output directory for bundles (default: archives) |
 | `-work-dir` | (from config) | Work directory for intermediate files (charts, images). If empty, a temporary directory is used |
-| `-resume` | `false` | Reuse image tarballs already present in a persistent work dir instead of re-pulling (use with `-work-dir`) |
+| `-resume` | `false` | Reuse image tarballs already present in a persistent work dir instead of re-pulling (use with `-work-dir`). Reuse requires matching content-hash (`.sha256`) and registry digest (`.digest`) sidecars written on a successful pull; older work dirs without content hashes re-pull safely |
 | `-registry-auth` | `false` | Enable authenticated pulls from private registries using the default Docker keychain |
 | `-compression` | `gzip` | Bundle compression codec: `gzip` (`.tar.gz`) or `zstd` (`.tar.zst`, smaller) |
 | `-min-free-mb` | `500` | Minimum free disk space (MiB) required on the work dir before downloading; `0` disables the check |
