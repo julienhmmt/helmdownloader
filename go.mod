@@ -2,6 +2,11 @@ module github.com/julienhmmt/helmdownloader
 
 go 1.26
 
+// go1.26.5 patches crypto/tls ECH privacy leak (GO-2026-5856 / CVE-2026-42505)
+// and os.Root symlink escape (CVE-2026-39822). With GOTOOLCHAIN=auto, the go
+// command downloads this toolchain when the host is older.
+toolchain go1.26.5
+
 require (
 	charm.land/bubbles/v2 v2.1.1
 	charm.land/bubbletea/v2 v2.0.8

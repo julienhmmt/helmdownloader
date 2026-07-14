@@ -568,7 +568,7 @@ func (m model) handleAddImageKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.ensureReviewCursorVisible()
 			return m, nil
 		}
-		if !looksLikeImageRef(ref) {
+		if !images.ValidRef(ref) {
 			// Stay on add screen so the user can edit; do not abort review.
 			m.setStatus("Invalid image reference.")
 			return m, nil
@@ -588,16 +588,6 @@ func (m model) handleAddImageKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m.updateComponents(msg)
-}
-
-// looksLikeImageRef applies light heuristics for manual add until a stricter
-// images.ValidRef lands (plan 004). Matches discovery's isImageRef spirit.
-func looksLikeImageRef(ref string) bool {
-	ref = strings.TrimSpace(ref)
-	if ref == "" || strings.ContainsAny(ref, " \t\n{}") {
-		return false
-	}
-	return strings.Contains(ref, ":") || strings.Contains(ref, "@") || strings.Contains(ref, "/")
 }
 
 // handleEndKey processes the terminal done/error screens.
