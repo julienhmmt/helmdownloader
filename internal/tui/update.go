@@ -163,6 +163,12 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.cancel()
 		return m, tea.Batch(cleanupCmd(m.prepared.WorkDir, m.prepared.TempWorkDir), tea.Quit)
 	}
+	// Global theme toggle — ctrl+t so it works even while typing in search /
+	// filter / add-image fields and never collides with single-letter bindings.
+	if msg.String() == "ctrl+t" {
+		m.toggleTheme()
+		return m, nil
+	}
 	switch m.state {
 	case stateSearch:
 		return m.handleSearchKey(msg)

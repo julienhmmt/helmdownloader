@@ -60,7 +60,7 @@ func (m model) viewSearch() string {
 		"",
 		m.search.View(),
 	)
-	return m.screen("HelmDownloader", "airgap chart bundler", body, "enter search · esc quit")
+	return m.screen("HelmDownloader", "airgap chart bundler", body, "enter search · ctrl+t theme · esc quit")
 }
 
 // viewBusy renders a centered spinner with a contextual label and cancel help.
@@ -72,7 +72,7 @@ func (m model) viewBusy() string {
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		fmt.Sprintf("%s %s", m.spinner.View(), label),
 		"",
-		m.renderHelp("esc cancel · ctrl+c quit"),
+		m.renderHelp("esc cancel · ctrl+t theme · ctrl+c quit"),
 	)
 	return m.frame(body)
 }
@@ -98,9 +98,9 @@ func (m model) viewList(body string) string {
 // navigation controls, keeping the footer readable on narrow terminals.
 func (m model) listHelp() string {
 	if m.state == stateResults {
-		return "enter select · esc back · ctrl+c quit\n/ fuzzy · s sort field · o sort dir · f field · F value · tab cycle values"
+		return "enter select · esc back · ctrl+t theme · ctrl+c quit\n/ fuzzy · s sort field · o sort dir · f field · F value · tab cycle values"
 	}
-	return "enter select · / filter · esc back · ctrl+c quit"
+	return "enter select · / filter · esc back · ctrl+t theme · ctrl+c quit"
 }
 
 // renderHelp splits a help string on newlines, then on " · ", and renders each
@@ -206,12 +206,12 @@ func (m model) viewReview() string {
 		m.cfg.RegistryPrefix, m.cfg.Platform, m.cfg.OutputDir))
 	body := lipgloss.JoinVertical(lipgloss.Left, rows.String(), "", meta)
 	return m.screen(title, subtitle, body,
-		"space toggle · a add · d delete · j/k move · pgup/pgdn page · g/G jump · enter download · esc back")
+		"space toggle · a add · d delete · j/k move · pgup/pgdn page · g/G jump · enter download · ctrl+t theme · esc back")
 }
 
 // viewAddImage renders the manual image entry prompt.
 func (m model) viewAddImage() string {
-	return m.screen("Add an image reference", "", m.addInput.View(), "enter add · esc cancel")
+	return m.screen("Add an image reference", "", m.addInput.View(), "enter add · ctrl+t theme · esc cancel")
 }
 
 // viewDownloading renders the download progress screen: an aggregate bar
@@ -250,7 +250,7 @@ func (m model) viewDownloading() string {
 	}
 
 	body := lipgloss.JoinVertical(lipgloss.Left, lines...)
-	return m.screen("Downloading images", "", body, "esc cancel · ctrl+c quit")
+	return m.screen("Downloading images", "", body, "esc cancel · ctrl+t theme · ctrl+c quit")
 }
 
 // miniBar renders a width-cell ASCII progress bar for (written/total).
@@ -375,7 +375,7 @@ func (m model) viewDone() string {
 		m.styles.muted.Render(fmt.Sprintf("  helmdownloader verify %s", m.bundlePath)),
 		m.styles.muted.Render(fmt.Sprintf("  tar xzf %s && ./load.sh", m.bundlePath)),
 		"",
-		m.renderHelp("n new bundle · q quit"),
+		m.renderHelp("n new bundle · ctrl+t theme · q quit"),
 	)
 	return m.frame(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }
@@ -402,6 +402,6 @@ func (m model) viewError() string {
 	if m.err != nil {
 		lines = append(lines, m.err.Error())
 	}
-	lines = append(lines, "", m.renderHelp("n new bundle · q quit"))
+	lines = append(lines, "", m.renderHelp("n new bundle · ctrl+t theme · q quit"))
 	return m.frame(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }

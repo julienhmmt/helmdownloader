@@ -235,6 +235,24 @@ func (m *model) applyTheme(bgIsDark bool) {
 	}
 }
 
+// toggleTheme flips light/dark, forces the matching theme on cfg (so View paints
+// a terminal background and auto detection no longer overrides the choice), and
+// surfaces a short status line so the change is obvious.
+func (m *model) toggleTheme() {
+	nextDark := !m.bgIsDark
+	if nextDark {
+		m.cfg.Theme = config.ThemeDark
+	} else {
+		m.cfg.Theme = config.ThemeLight
+	}
+	m.applyTheme(nextDark)
+	if nextDark {
+		m.setStatus("Theme: dark")
+	} else {
+		m.setStatus("Theme: light")
+	}
+}
+
 // Init starts the spinner and, for theme=auto, requests the terminal background.
 func (m model) Init() tea.Cmd {
 	cmds := []tea.Cmd{m.spinner.Tick}

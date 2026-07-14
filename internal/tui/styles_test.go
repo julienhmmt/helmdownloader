@@ -115,6 +115,49 @@ func TestApplyTheme_SwitchesPaletteAndListMeta(t *testing.T) {
 	assert.Equal(t, colorHex(hexAccentLight), colorHex(item.palette.accent))
 }
 
+func TestToggleTheme_ForcesLightAndDark(t *testing.T) {
+	cfg := config.Default()
+	cfg.Theme = config.ThemeDark
+	m := newModel(cfg, log.Discard())
+	require.True(t, m.bgIsDark)
+
+	m.toggleTheme()
+	assert.False(t, m.bgIsDark)
+	assert.Equal(t, config.ThemeLight, m.cfg.Theme)
+	assert.Equal(t, "Theme: light", m.status)
+	assert.Equal(t, colorHex(hexPrimaryLight), colorHex(m.styles.palette.primary))
+	require.NotNil(t, m.View().BackgroundColor)
+	assert.Equal(t, colorHex(hexTermBGLight), colorHex(m.View().BackgroundColor))
+
+	m.toggleTheme()
+	assert.True(t, m.bgIsDark)
+	assert.Equal(t, config.ThemeDark, m.cfg.Theme)
+	assert.Equal(t, "Theme: dark", m.status)
+	assert.Equal(t, colorHex(hexPrimaryDark), colorHex(m.styles.palette.primary))
+}
+
+func TestHandleKey_CtrlTTogglesThemeGlobally(t *testing.T) {
+	cfg := config.Default()
+	cfg.Theme = config.ThemeDark
+	m := newModel(cfg, log.Discard())
+	m.width, m.height = 100, 40
+	m.state = stateSearch
+	require.True(t, m.bgIsDark)
+
+	next, _ := m.handleKey(keyPress("ctrl+t"))
+	got, ok := next.(model)
+	require.True(t, ok)
+	assert.False(t, got.bgIsDark)
+	assert.Equal(t, config.ThemeLight, got.cfg.Theme)
+	assert.Equal(t, "Theme: light", got.status)
+
+	// Works while typing on search: typing 't' must not toggle, only ctrl+t.
+	next, _ = got.handleKey(keyPress("t"))
+	still := next.(model)
+	assert.False(t, still.bgIsDark)
+	assert.Equal(t, config.ThemeLight, still.cfg.Theme)
+}
+
 // colorHex formats a color as #RRGGBB for stable equality checks.
 func colorHex(c color.Color) string {
 	if c == nil {
