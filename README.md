@@ -4,6 +4,8 @@ A TUI (Terminal User Interface) application (**v0.3.0**) for downloading Helm ch
 
 Run `helmdownloader version` to print the binary identity (release builds inject the tag; `make build` uses `git describe`).
 
+![Search chart](img/helmdownload-0.3.0-1-search-chart.png)
+
 ## Features
 
 - **Search**: Search for Helm charts on [ArtifactHub](https://artifacthub.io)
@@ -18,6 +20,38 @@ Run `helmdownloader version` to print the binary identity (release builds inject
 - **Private registries**: Authenticated pulls via the default Docker keychain (`-registry-auth`)
 - **Themes**: `auto`, `light`, `dark`, `high-contrast`, `ocean`, `matrix` — set with `-theme` or pick live with `Ctrl+T`
 - **Resumable**: `-resume` reuses tarballs in a persistent work dir when content-hash and registry digest sidecars match
+
+### Screenshots
+
+**Search**
+
+![Search chart](img/helmdownload-0.3.0-1-search-chart.png)
+
+**Results**
+
+![List charts](img/helmdownload-0.3.0-2-list-charts.png)
+
+**Versions**
+
+![Version picker](img/helmdownload-0.3.0-3-version-picker.png)
+
+**Review images**
+
+![Image selector](img/helmdownload-0.3.0-4-image-selector.png)
+
+**Download**
+
+![Downloading images](img/helmdownload-0.3.0-5-downloading-images.png)
+
+**Done**
+
+![Bundle created](img/helmdownload-0.3.0-6-bundle-created.png)
+
+### Themes
+
+| Light | Dark | High contrast | Ocean | Matrix |
+| ----- | ---- | ------------- | ----- | ------ |
+| ![Light](img/helmdownload-0.3.0-theme-light.png) | ![Dark](img/helmdownload-0.3.0-theme-dark.png) | ![High contrast](img/helmdownload-0.3.0-theme-high-contrast.png) | ![Ocean](img/helmdownload-0.3.0-theme-ocean.png) | ![Matrix](img/helmdownload-0.3.0-theme-matrix.png) |
 
 ## Prerequisites
 
