@@ -83,6 +83,7 @@ type model struct {
 	prepared        pipeline.Prepared
 	reviewImages    []images.Image
 	reviewCursor    int
+	reviewOffset    int // first visible index in reviewImages (windowed list)
 
 	activity    chan tea.Msg
 	downCurrent int

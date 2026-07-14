@@ -50,7 +50,7 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 | **Results** | `Enter` select, `/` fuzzy filter, `s` sort field, `o` sort direction, `f` filter field, `F` type filter, `Tab` cycle values, `Esc` back | Browse matching charts; each row shows stars, repo, publisher, app version, and description |
 | **Filter** | `Enter` apply, `Tab` cycle values, `Esc` cancel | Type a substring to filter by author or company |
 | **Versions** | `Enter` to select, `/` to filter, `Esc` to back | Pick a chart version |
-| **Review** | `Space` toggle, `a` add, `d` delete, `Enter` download, `Esc` back | Review auto-discovered images |
+| **Review** | `Space` toggle, `a` add, `d` delete, `j`/`k` move, `PgUp`/`PgDn` (or `Ctrl+u`/`Ctrl+d`) page, `g`/`G` jump, `Enter` download, `Esc` back | Review auto-discovered images; long lists are windowed |
 | **Add Image** | `Enter` confirm, `Esc` cancel | Manually add an image reference |
 | **Download** | (waits) | Pulls images and builds the bundle |
 | **Done** | `n` new bundle, `q` quit | Shows the path to the created bundle |
