@@ -11,7 +11,8 @@ import (
 
 // packageItem adapts an ArtifactHub package to the bubbles list interface.
 type packageItem struct {
-	pkg artifacthub.Package
+	pkg     artifacthub.Package
+	palette palette
 }
 
 // Title renders the package's primary line: name plus optional badges.
@@ -32,8 +33,8 @@ func (i packageItem) Title() string {
 // stays scannable under stress (operators can open ArtifactHub for prose).
 func (i packageItem) Description() string {
 	publisher := i.publisher()
-	star := lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render(fmt.Sprintf("★ %d", i.pkg.Stars))
-	metaStyle := lipgloss.NewStyle().Foreground(colorSecondary)
+	star := lipgloss.NewStyle().Foreground(i.palette.accent).Bold(true).Render(fmt.Sprintf("★ %d", i.pkg.Stars))
+	metaStyle := lipgloss.NewStyle().Foreground(i.palette.secondary)
 	metaParts := []string{
 		metaStyle.Render("repo:" + i.pkg.RepoName),
 		metaStyle.Render("by:" + publisher),
@@ -41,7 +42,7 @@ func (i packageItem) Description() string {
 	if i.pkg.AppVersion != "" {
 		metaParts = append(metaParts, metaStyle.Render("app:"+i.pkg.AppVersion))
 	}
-	sep := lipgloss.NewStyle().Foreground(colorFaint).Render(" · ")
+	sep := lipgloss.NewStyle().Foreground(i.palette.faint).Render(" · ")
 	return fmt.Sprintf("%s  %s", star, strings.Join(metaParts, sep))
 }
 

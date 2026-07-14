@@ -20,6 +20,7 @@ func TestDefault_HasSensibleValues(t *testing.T) {
 	assert.Equal(t, 4, cfg.Concurrency)
 	assert.Equal(t, 2, cfg.Retries)
 	assert.Equal(t, 20, cfg.SearchLimit)
+	assert.Equal(t, config.ThemeAuto, cfg.Theme)
 }
 
 func TestLoad_MissingFileReturnsDefaults(t *testing.T) {
@@ -62,4 +63,26 @@ func TestDefaultPath_EndsWithConventionalLocation(t *testing.T) {
 		t.Skip("user config dir unavailable")
 	}
 	assert.Equal(t, filepath.Join("helmdownloader", "config.yaml"), filepath.Join(filepath.Base(filepath.Dir(p)), filepath.Base(p)))
+}
+
+func TestLoad_ThemeFromYAML(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("theme: light\n"), 0o644))
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "light", cfg.Theme)
+}
+
+func TestValidateTheme(t *testing.T) {
+	assert.NoError(t, config.ValidateTheme(""))
+	assert.NoError(t, config.ValidateTheme("auto"))
+	assert.NoError(t, config.ValidateTheme("light"))
+	assert.NoError(t, config.ValidateTheme("DARK"))
+	assert.Error(t, config.ValidateTheme("sepia"))
+}
+
+func TestNormalizeTheme(t *testing.T) {
+	assert.Equal(t, config.ThemeAuto, config.NormalizeTheme(""))
+	assert.Equal(t, config.ThemeLight, config.NormalizeTheme(" Light "))
+	assert.Equal(t, config.ThemeDark, config.NormalizeTheme("DARK"))
 }

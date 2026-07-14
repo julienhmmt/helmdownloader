@@ -58,6 +58,14 @@ type model struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
+	// bgIsDark selects light vs dark palette colors. For theme=auto it starts
+	// true (dark-friendly default) and is refined by BackgroundColorMsg.
+	// For theme=light|dark it is fixed at construction time.
+	bgIsDark bool
+	// bgKnown is true once the palette has been finalized (forced theme, or
+	// terminal background detection completed / skipped).
+	bgKnown bool
+
 	state    state
 	width    int
 	height   int
@@ -116,36 +124,50 @@ func (m *model) clearStatus() { m.status = "" }
 
 // newModel constructs the root model from cfg.
 func newModel(cfg config.Config, logger *log.Logger) model {
+	theme := config.NormalizeTheme(cfg.Theme)
+	forcedDark, forced := themeForcedDark(theme)
+	// Auto starts dark-friendly until BackgroundColorMsg arrives.
+	bgIsDark := true
+	if forced {
+		bgIsDark = forcedDark
+	}
+	styles := newStyles(bgIsDark)
+
 	spin := spinner.New()
 	spin.Spinner = spinner.Dot
-	spin.Style = lipgloss.NewStyle().Foreground(colorAccent)
+	spin.Style = lipgloss.NewStyle().Foreground(styles.palette.accent)
 
+	fill, empty := progressColors(bgIsDark)
 	prog := progress.New(
-		progress.WithColors(lipgloss.Color("#B8902E"), lipgloss.Color("#E6C766")),
+		progress.WithColors(fill, empty),
 		progress.WithWidth(60),
 	)
+	prog.EmptyColor = empty
 
 	search := textinput.New()
 	search.Placeholder = "search charts (e.g. argo-cd, mattermost)…"
+	search.SetStyles(textInputStyles(styles.palette))
 	search.Focus()
 	search.CharLimit = 100
 
 	add := textinput.New()
 	add.Placeholder = "registry/repo:tag"
+	add.SetStyles(textInputStyles(styles.palette))
 	add.CharLimit = 200
 
 	filter := textinput.New()
 	filter.Placeholder = "substring (e.g. bitnami, argo)…"
+	filter.SetStyles(textInputStyles(styles.palette))
 	filter.CharLimit = 100
 
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(colorAccent).Padding(0, 1)
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(styles.palette.accent).Padding(0, 1)
 
-	resultsList := list.New(nil, newHoverDelegate(), 0, 0)
+	resultsList := list.New(nil, newHoverDelegate(styles.palette), 0, 0)
 	resultsList.Title = "Charts"
 	resultsList.SetShowHelp(false)
 	resultsList.Styles.Title = titleStyle
 
-	versionsList := list.New(nil, newHoverDelegate(), 0, 0)
+	versionsList := list.New(nil, newHoverDelegate(styles.palette), 0, 0)
 	versionsList.Title = "Versions"
 	versionsList.SetShowHelp(false)
 	versionsList.Styles.Title = titleStyle
@@ -157,10 +179,12 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 		cfg:           cfg,
 		client:        client,
 		pipeline:      pipeline.New(cfg, logger),
-		styles:        newStyles(),
+		styles:        styles,
 		logger:        logger,
 		ctx:           ctx,
 		cancel:        cancel,
+		bgIsDark:      bgIsDark,
+		bgKnown:       forced,
 		state:         stateSearch,
 		spinner:       spin,
 		progress:      prog,
@@ -181,7 +205,68 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 	return m
 }
 
-// Init starts the spinner ticking.
+// themeForcedDark reports whether theme forces a dark palette and whether the
+// theme is forced (not auto).
+func themeForcedDark(theme string) (isDark bool, forced bool) {
+	switch config.NormalizeTheme(theme) {
+	case config.ThemeLight:
+		return false, true
+	case config.ThemeDark:
+		return true, true
+	default:
+		return false, false
+	}
+}
+
+// applyTheme rebuilds styles and list/spinner chrome for bgIsDark.
+func (m *model) applyTheme(bgIsDark bool) {
+	m.bgIsDark = bgIsDark
+	m.bgKnown = true
+	m.styles = newStyles(bgIsDark)
+	m.spinner.Style = lipgloss.NewStyle().Foreground(m.styles.palette.accent)
+	fill, empty := progressColors(bgIsDark)
+	m.progress.FullColor = fill
+	m.progress.EmptyColor = empty
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(m.styles.palette.accent).Padding(0, 1)
+	m.results.SetDelegate(newHoverDelegate(m.styles.palette))
+	m.results.Styles.Title = titleStyle
+	m.versions.SetDelegate(newHoverDelegate(m.styles.palette))
+	m.versions.Styles.Title = titleStyle
+	// Text inputs keep dark-default ANSI styles unless re-themed — fix that so
+	// light mode does not show a white prompt/placeholder on cream.
+	inputStyles := textInputStyles(m.styles.palette)
+	m.search.SetStyles(inputStyles)
+	m.addInput.SetStyles(inputStyles)
+	m.filter.SetStyles(inputStyles)
+	// Re-stamp package item palettes so list meta colors match.
+	if len(m.allPackages) > 0 {
+		m.refreshResults()
+	}
+}
+
+// toggleTheme flips light/dark, forces the matching theme on cfg (so View paints
+// a terminal background and auto detection no longer overrides the choice), and
+// surfaces a short status line so the change is obvious.
+func (m *model) toggleTheme() {
+	nextDark := !m.bgIsDark
+	if nextDark {
+		m.cfg.Theme = config.ThemeDark
+	} else {
+		m.cfg.Theme = config.ThemeLight
+	}
+	m.applyTheme(nextDark)
+	if nextDark {
+		m.setStatus("Theme: dark")
+	} else {
+		m.setStatus("Theme: light")
+	}
+}
+
+// Init starts the spinner and, for theme=auto, requests the terminal background.
 func (m model) Init() tea.Cmd {
-	return m.spinner.Tick
+	cmds := []tea.Cmd{m.spinner.Tick}
+	if config.NormalizeTheme(m.cfg.Theme) == config.ThemeAuto {
+		cmds = append(cmds, tea.RequestBackgroundColor)
+	}
+	return tea.Batch(cmds...)
 }

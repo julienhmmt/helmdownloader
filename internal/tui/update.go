@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
+	"github.com/julienhmmt/helmdownloader/pkg/config"
 	"github.com/julienhmmt/helmdownloader/pkg/images"
 	"github.com/julienhmmt/helmdownloader/pkg/pipeline"
 )
@@ -21,6 +22,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.results.SetSize(typed.Width-2, typed.Height-6)
 		m.versions.SetSize(typed.Width-2, typed.Height-6)
 		m.progress.SetWidth(max(0, min(typed.Width-4, 60)))
+		return m, nil
+	case tea.BackgroundColorMsg:
+		// Only auto theme follows terminal detection; light/dark are forced.
+		if config.NormalizeTheme(m.cfg.Theme) != config.ThemeAuto {
+			return m, nil
+		}
+		m.applyTheme(typed.IsDark())
 		return m, nil
 	case tea.KeyPressMsg:
 		return m.handleKey(typed)
@@ -154,6 +162,12 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "ctrl+c" {
 		m.cancel()
 		return m, tea.Batch(cleanupCmd(m.prepared.WorkDir, m.prepared.TempWorkDir), tea.Quit)
+	}
+	// Global theme toggle — ctrl+t so it works even while typing in search /
+	// filter / add-image fields and never collides with single-letter bindings.
+	if msg.String() == "ctrl+t" {
+		m.toggleTheme()
+		return m, nil
 	}
 	switch m.state {
 	case stateSearch:
@@ -328,7 +342,7 @@ func (m *model) cycleFilterValue() {
 // refreshResults reprojects allPackages through the current sort/filter and
 // updates the list items in place.
 func (m *model) refreshResults() {
-	items := packagesToItems(m.visiblePackages())
+	items := packagesToItems(m.visiblePackages(), m.styles.palette)
 	m.results.SetItems(items)
 	m.results.Title = fmt.Sprintf("Charts · %d", len(items))
 }
