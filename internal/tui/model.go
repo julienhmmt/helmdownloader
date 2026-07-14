@@ -151,9 +151,10 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return model{
+	client, clientErr := artifacthub.New(cfg.ArtifactHubURL, cfg.HTTPSProxy, logger)
+	m := model{
 		cfg:           cfg,
-		client:        artifacthub.New(cfg.ArtifactHubURL, logger),
+		client:        client,
 		pipeline:      pipeline.New(cfg, logger),
 		styles:        newStyles(),
 		logger:        logger,
@@ -172,6 +173,11 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 		sortField:     sortStars,
 		sortDir:       sortDesc,
 	}
+	if clientErr != nil {
+		m.state = stateError
+		m.err = clientErr
+	}
+	return m
 }
 
 // Init starts the spinner ticking.

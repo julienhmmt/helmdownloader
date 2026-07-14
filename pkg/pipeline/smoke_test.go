@@ -27,7 +27,8 @@ func skipUnlessSmoke(t *testing.T) {
 
 func TestSmoke_ArtifactHubSearch(t *testing.T) {
 	skipUnlessSmoke(t)
-	client := artifacthub.New("https://artifacthub.io", log.Discard())
+	client, err := artifacthub.New("https://artifacthub.io", "", log.Discard())
+	require.NoError(t, err)
 	packages, err := client.Search(context.Background(), "argo-cd", 20)
 	require.NoError(t, err)
 	require.NotEmpty(t, packages)
@@ -67,7 +68,8 @@ func TestSmoke_HelmPullAndExtract(t *testing.T) {
 
 func TestSmoke_PipelinePrepare(t *testing.T) {
 	skipUnlessSmoke(t)
-	client := artifacthub.New("https://artifacthub.io", log.Discard())
+	client, err := artifacthub.New("https://artifacthub.io", "", log.Discard())
+	require.NoError(t, err)
 	packages, err := client.Search(context.Background(), "argo-cd", 20)
 	require.NoError(t, err)
 	require.NotEmpty(t, packages)

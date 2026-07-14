@@ -38,6 +38,9 @@ func TestBuildSBOM_HasRequiredFields(t *testing.T) {
 	assert.Equal(t, "SPDXRef-Package-Chart", chartPkg.SPDXID)
 	assert.Equal(t, "argo-cd", chartPkg.Name)
 	assert.Equal(t, "1.0.0", chartPkg.VersionInfo)
+	assert.Equal(t, "argo-cd-1.0.0.tgz", chartPkg.DownloadLocation)
+	assert.False(t, strings.HasPrefix(chartPkg.DownloadLocation, "/"))
+	assert.Contains(t, doc.CreationInfo.Creators[0], "helmdownloader")
 	// Each image package has a DEPENDS_ON relationship from the chart.
 	assert.Len(t, doc.Relationships, 2)
 	for _, rel := range doc.Relationships {
