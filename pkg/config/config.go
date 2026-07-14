@@ -20,9 +20,9 @@ const (
 	ThemeMatrix       = "matrix"
 )
 
-// ThemeCycle is the order used when cycling themes in the TUI (Ctrl+T).
-// auto is omitted: once the user toggles, they leave terminal-follow mode.
-var ThemeCycle = []string{
+// ThemeMenu is the order of themes shown in the TUI theme picker (Ctrl+T).
+var ThemeMenu = []string{
+	ThemeAuto,
 	ThemeLight,
 	ThemeDark,
 	ThemeHighContrast,
@@ -135,16 +135,15 @@ func NormalizeTheme(name string) string {
 	return n
 }
 
-// NextTheme returns the next theme in ThemeCycle after name. Unknown or auto
-// names start the cycle at ThemeLight.
-func NextTheme(name string) string {
+// ThemeMenuIndex returns the index of name in ThemeMenu, or 0 (auto) if unknown.
+func ThemeMenuIndex(name string) int {
 	n := NormalizeTheme(name)
-	for i, t := range ThemeCycle {
+	for i, t := range ThemeMenu {
 		if t == n {
-			return ThemeCycle[(i+1)%len(ThemeCycle)]
+			return i
 		}
 	}
-	return ThemeCycle[0]
+	return 0
 }
 
 // ThemeIsForced reports whether name paints a fixed palette (not auto).

@@ -163,10 +163,19 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.cancel()
 		return m, tea.Batch(cleanupCmd(m.prepared.WorkDir, m.prepared.TempWorkDir), tea.Quit)
 	}
-	// Global theme toggle — ctrl+t so it works even while typing in search /
+	// Global theme menu — ctrl+t so it works even while typing in search /
 	// filter / add-image fields and never collides with single-letter bindings.
+	// Re-pressing while already in the menu is a no-op (use Esc to cancel).
 	if msg.String() == "ctrl+t" {
-		m.toggleTheme()
+		if m.state == stateThemeMenu {
+			return m, nil
+		}
+		// Do not interrupt in-flight busy work with a palette picker.
+		switch m.state {
+		case stateSearching, statePreparing, stateDownloading, stateBundling:
+			return m, nil
+		}
+		m.openThemeMenu()
 		return m, nil
 	}
 	switch m.state {
@@ -184,12 +193,48 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleAddImageKey(msg)
 	case stateDownloadReview:
 		return m.handleDownloadReviewKey(msg)
+	case stateThemeMenu:
+		return m.handleThemeMenuKey(msg)
 	case stateSearching, statePreparing, stateDownloading, stateBundling:
 		return m.handleBusyKey(msg)
 	case stateDone, stateError:
 		return m.handleEndKey(msg)
 	}
 	return m.updateComponents(msg)
+}
+
+// handleThemeMenuKey navigates the theme picker: j/k or arrows move (with live
+// preview), Enter confirms, Esc restores the prior theme.
+func (m model) handleThemeMenuKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.cancelThemeMenu()
+		return m, nil
+	case "enter":
+		m.confirmThemeMenu()
+		return m, nil
+	case "up", "k":
+		if m.themeMenuCursor > 0 {
+			m.themeMenuCursor--
+			m.previewThemeAtCursor()
+		}
+		return m, nil
+	case "down", "j":
+		if m.themeMenuCursor < len(config.ThemeMenu)-1 {
+			m.themeMenuCursor++
+			m.previewThemeAtCursor()
+		}
+		return m, nil
+	case "1", "2", "3", "4", "5", "6":
+		// Digit jump: 1-based index into ThemeMenu.
+		idx := int(msg.String()[0] - '1')
+		if idx >= 0 && idx < len(config.ThemeMenu) {
+			m.themeMenuCursor = idx
+			m.previewThemeAtCursor()
+		}
+		return m, nil
+	}
+	return m, nil
 }
 
 // handleBusyKey cancels long-running ops without quitting the process.

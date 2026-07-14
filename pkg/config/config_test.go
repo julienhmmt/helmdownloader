@@ -91,14 +91,16 @@ func TestNormalizeTheme(t *testing.T) {
 	assert.Equal(t, config.ThemeHighContrast, config.NormalizeTheme(" High-Contrast "))
 }
 
-func TestNextTheme(t *testing.T) {
-	assert.Equal(t, config.ThemeLight, config.NextTheme(config.ThemeAuto))
-	assert.Equal(t, config.ThemeDark, config.NextTheme(config.ThemeLight))
-	assert.Equal(t, config.ThemeHighContrast, config.NextTheme(config.ThemeDark))
-	assert.Equal(t, config.ThemeOcean, config.NextTheme(config.ThemeHighContrast))
-	assert.Equal(t, config.ThemeMatrix, config.NextTheme(config.ThemeOcean))
-	assert.Equal(t, config.ThemeLight, config.NextTheme(config.ThemeMatrix))
-	assert.Equal(t, config.ThemeLight, config.NextTheme("unknown"))
+func TestThemeMenuIndex(t *testing.T) {
+	assert.Equal(t, 0, config.ThemeMenuIndex(config.ThemeAuto))
+	assert.Equal(t, 0, config.ThemeMenuIndex(""))
+	assert.Equal(t, 1, config.ThemeMenuIndex(config.ThemeLight))
+	assert.Equal(t, 2, config.ThemeMenuIndex(config.ThemeDark))
+	assert.Equal(t, 3, config.ThemeMenuIndex(config.ThemeHighContrast))
+	assert.Equal(t, 4, config.ThemeMenuIndex(config.ThemeOcean))
+	assert.Equal(t, 5, config.ThemeMenuIndex(config.ThemeMatrix))
+	assert.Equal(t, 0, config.ThemeMenuIndex("unknown"))
+	assert.Equal(t, len(config.ThemeMenu), 6)
 }
 
 func TestThemeIsForced(t *testing.T) {

@@ -186,40 +186,51 @@ func TestApplyTheme_SwitchesPaletteAndListMeta(t *testing.T) {
 	assert.Equal(t, colorHex(lightPalette().accent), colorHex(item.palette.accent))
 }
 
-func TestToggleTheme_CyclesNamedThemes(t *testing.T) {
+func TestOpenThemeMenu_RemembersReturnAndTheme(t *testing.T) {
 	cfg := config.Default()
 	cfg.Theme = config.ThemeDark
 	m := newModel(cfg, log.Discard())
-	require.Equal(t, config.ThemeDark, m.cfg.Theme)
-
-	// dark → high-contrast → ocean → matrix → light → dark
-	want := []string{
-		config.ThemeHighContrast,
-		config.ThemeOcean,
-		config.ThemeMatrix,
-		config.ThemeLight,
-		config.ThemeDark,
-	}
-	for _, next := range want {
-		m.toggleTheme()
-		assert.Equal(t, next, m.cfg.Theme)
-		assert.Equal(t, "Theme: "+next, m.status)
-		assert.Equal(t, colorHex(resolvePalette(next, true).accent), colorHex(m.styles.palette.accent))
-		require.NotNil(t, m.View().BackgroundColor)
-	}
+	m.state = stateResults
+	m.openThemeMenu()
+	assert.Equal(t, stateThemeMenu, m.state)
+	assert.Equal(t, stateResults, m.themeMenuReturn)
+	assert.Equal(t, config.ThemeDark, m.themeBeforeMenu)
+	assert.Equal(t, config.ThemeMenuIndex(config.ThemeDark), m.themeMenuCursor)
 }
 
-func TestToggleTheme_FromAutoStartsAtLight(t *testing.T) {
+func TestThemeMenu_PreviewConfirmAndCancel(t *testing.T) {
 	cfg := config.Default()
-	cfg.Theme = config.ThemeAuto
+	cfg.Theme = config.ThemeDark
 	m := newModel(cfg, log.Discard())
-	m.toggleTheme()
+	m.width, m.height = 100, 40
+	m.state = stateSearch
+	m.openThemeMenu()
+
+	// Move to light (index 1) and preview.
+	m.themeMenuCursor = config.ThemeMenuIndex(config.ThemeLight)
+	m.previewThemeAtCursor()
 	assert.Equal(t, config.ThemeLight, m.cfg.Theme)
-	assert.Equal(t, "Theme: light", m.status)
 	assert.False(t, m.bgIsDark)
+	assert.Equal(t, colorHex(lightPalette().accent), colorHex(m.styles.palette.accent))
+
+	// Cancel restores dark.
+	m.cancelThemeMenu()
+	assert.Equal(t, stateSearch, m.state)
+	assert.Equal(t, config.ThemeDark, m.cfg.Theme)
+	assert.True(t, m.bgIsDark)
+
+	// Open again, pick ocean, confirm.
+	m.openThemeMenu()
+	m.themeMenuCursor = config.ThemeMenuIndex(config.ThemeOcean)
+	m.previewThemeAtCursor()
+	m.confirmThemeMenu()
+	assert.Equal(t, stateSearch, m.state)
+	assert.Equal(t, config.ThemeOcean, m.cfg.Theme)
+	assert.Equal(t, "Theme: ocean", m.status)
+	assert.Equal(t, colorHex(oceanPalette().accent), colorHex(m.styles.palette.accent))
 }
 
-func TestHandleKey_CtrlTCyclesThemeGlobally(t *testing.T) {
+func TestHandleKey_CtrlTOpensThemeMenu(t *testing.T) {
 	cfg := config.Default()
 	cfg.Theme = config.ThemeDark
 	m := newModel(cfg, log.Discard())
@@ -229,13 +240,44 @@ func TestHandleKey_CtrlTCyclesThemeGlobally(t *testing.T) {
 	next, _ := m.handleKey(keyPress("ctrl+t"))
 	got, ok := next.(model)
 	require.True(t, ok)
+	assert.Equal(t, stateThemeMenu, got.state)
+	assert.Equal(t, stateSearch, got.themeMenuReturn)
+
+	// j moves down and live-previews.
+	next, _ = got.handleKey(keyPress("j"))
+	got = next.(model)
+	assert.Equal(t, config.ThemeMenuIndex(config.ThemeDark)+1, got.themeMenuCursor)
+	assert.Equal(t, config.ThemeHighContrast, got.cfg.Theme)
+
+	// enter applies and returns.
+	next, _ = got.handleKey(keyPress("enter"))
+	got = next.(model)
+	assert.Equal(t, stateSearch, got.state)
 	assert.Equal(t, config.ThemeHighContrast, got.cfg.Theme)
 	assert.Equal(t, "Theme: high-contrast", got.status)
+}
 
-	// Works while typing on search: typing 't' must not toggle, only ctrl+t.
-	next, _ = got.handleKey(keyPress("t"))
-	still := next.(model)
-	assert.Equal(t, config.ThemeHighContrast, still.cfg.Theme)
+func TestHandleKey_CtrlTIgnoredWhileBusy(t *testing.T) {
+	cfg := config.Default()
+	m := newModel(cfg, log.Discard())
+	m.state = stateDownloading
+	next, _ := m.handleKey(keyPress("ctrl+t"))
+	got := next.(model)
+	assert.Equal(t, stateDownloading, got.state)
+}
+
+func TestViewThemeMenuRenders(t *testing.T) {
+	cfg := config.Default()
+	cfg.Theme = config.ThemeLight
+	m := newModel(cfg, log.Discard())
+	m.width, m.height = 100, 40
+	m.openThemeMenu()
+	out := m.render()
+	assert.Contains(t, out, "Theme")
+	assert.Contains(t, out, "light")
+	assert.Contains(t, out, "ocean")
+	assert.Contains(t, out, "matrix")
+	assert.Contains(t, out, "preview:")
 }
 
 // colorHex formats a color as #RRGGBB for stable equality checks.

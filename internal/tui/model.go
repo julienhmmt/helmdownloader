@@ -36,6 +36,7 @@ const (
 	stateBundling
 	stateDone
 	stateError
+	stateThemeMenu
 )
 
 // imageProgress is the byte-level progress of one in-flight image pull.
@@ -114,6 +115,13 @@ type model struct {
 	// reviewWarnAck tracks whether the user already acknowledged a progressive
 	// safety warning on the review screen (deprecated chart / prerelease).
 	reviewWarnAck bool
+
+	// Theme menu (Ctrl+T). themeMenuReturn is the screen to restore on
+	// confirm/cancel; themeBeforeMenu is the theme restored if the user Escs
+	// after live-previewing other palettes.
+	themeMenuCursor int
+	themeMenuReturn state
+	themeBeforeMenu string
 }
 
 // setStatus stores a soft status message for the next render.
@@ -230,13 +238,40 @@ func (m *model) applyTheme(preferredIsDark bool) {
 	}
 }
 
-// toggleTheme advances to the next named theme (light → dark → high-contrast →
-// ocean → matrix → light). Leaving auto ends terminal-follow mode so detection
-// no longer overrides the user choice.
-func (m *model) toggleTheme() {
-	m.cfg.Theme = config.NextTheme(m.cfg.Theme)
+// openThemeMenu switches to the theme picker, remembering the prior screen and
+// theme so Esc can cancel a live preview.
+func (m *model) openThemeMenu() {
+	m.themeMenuReturn = m.state
+	m.themeBeforeMenu = config.NormalizeTheme(m.cfg.Theme)
+	m.themeMenuCursor = config.ThemeMenuIndex(m.cfg.Theme)
+	m.clearStatus()
+	m.state = stateThemeMenu
+}
+
+// previewThemeAtCursor applies the palette under the menu cursor without leaving
+// the menu, so the user can see each theme before confirming.
+func (m *model) previewThemeAtCursor() {
+	if m.themeMenuCursor < 0 || m.themeMenuCursor >= len(config.ThemeMenu) {
+		return
+	}
+	m.cfg.Theme = config.ThemeMenu[m.themeMenuCursor]
 	m.applyTheme(m.bgIsDark)
-	m.setStatus("Theme: " + m.cfg.Theme)
+}
+
+// confirmThemeMenu keeps the currently previewed theme and returns to the prior
+// screen.
+func (m *model) confirmThemeMenu() {
+	m.clearStatus()
+	m.setStatus("Theme: " + config.NormalizeTheme(m.cfg.Theme))
+	m.state = m.themeMenuReturn
+}
+
+// cancelThemeMenu restores the theme active when the menu opened and returns.
+func (m *model) cancelThemeMenu() {
+	m.cfg.Theme = m.themeBeforeMenu
+	m.applyTheme(m.bgIsDark)
+	m.clearStatus()
+	m.state = m.themeMenuReturn
 }
 
 // Init starts the spinner and, for theme=auto, requests the terminal background.
