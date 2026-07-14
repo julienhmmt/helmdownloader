@@ -28,3 +28,10 @@ func TestNewPuller_DefaultsPlatform(t *testing.T) {
 		filepath.Join(t.TempDir(), "out.tar"), nil)
 	assert.ErrorContains(t, err, "proxy")
 }
+
+func TestSave_InvalidPlatformErrors(t *testing.T) {
+	p := registry.NewPuller("not/a/platform/extra", "", false, log.Discard())
+	_, err := p.Save(context.Background(), "redis:7", "rgy.local/redis:7",
+		filepath.Join(t.TempDir(), "out.tar"), nil)
+	assert.ErrorContains(t, err, "platform")
+}
