@@ -15,6 +15,12 @@ func TestPackageItem_Title(t *testing.T) {
 
 	item = packageItem{pkg: artifacthub.Package{Name: "old", Deprecated: true}}
 	assert.Equal(t, "old (deprecated)", item.Title())
+
+	item = packageItem{pkg: artifacthub.Package{Name: "argo-cd", Official: true}}
+	assert.Equal(t, "argo-cd · official", item.Title())
+
+	item = packageItem{pkg: artifacthub.Package{Name: "old", Official: true, Deprecated: true}}
+	assert.Equal(t, "old · official (deprecated)", item.Title())
 }
 
 func TestPackageItem_Description(t *testing.T) {
@@ -32,9 +38,8 @@ func TestPackageItem_Description(t *testing.T) {
 	assert.Contains(t, desc, "repo:argo")
 	assert.Contains(t, desc, "by:Argo Project")
 	assert.Contains(t, desc, "app:2.9.3")
-	assert.Contains(t, desc, "A declarative continuous deployment")
-	// The description should be colored via ANSI escapes; the presence of a
-	// reset sequence indicates inline styling was applied.
+	// Free-text chart description is intentionally omitted for scannability.
+	assert.NotContains(t, desc, "A declarative continuous deployment")
 	assert.Contains(t, desc, "\x1b[")
 }
 

@@ -103,6 +103,9 @@ type model struct {
 	// state). Cleared on most navigation. Prefer status over stateError for
 	// recoverable UX (empty results, silent no-ops, soft validation).
 	status string
+	// reviewWarnAck tracks whether the user already acknowledged a progressive
+	// safety warning on the review screen (deprecated chart / prerelease).
+	reviewWarnAck bool
 }
 
 // setStatus stores a soft status message for the next render.

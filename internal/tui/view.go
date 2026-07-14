@@ -93,7 +93,7 @@ func (m model) viewList(body string) string {
 // navigation controls, keeping the footer readable on narrow terminals.
 func (m model) listHelp() string {
 	if m.state == stateResults {
-		return "enter select · esc back · ctrl+c quit\n/ filter · s sort · o dir · f filter · F type · tab cycle"
+		return "enter select · esc back · ctrl+c quit\n/ fuzzy · s sort field · o sort dir · f field · F value · tab cycle values"
 	}
 	return "enter select · / filter · esc back · ctrl+c quit"
 }
