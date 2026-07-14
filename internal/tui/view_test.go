@@ -2,11 +2,10 @@ package tui
 
 import (
 	"errors"
-
-	"charm.land/bubbles/v2/list"
 	"strings"
 	"testing"
 
+	"charm.land/bubbles/v2/list"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
