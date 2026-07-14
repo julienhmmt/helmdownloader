@@ -1,4 +1,4 @@
-.PHONY: default help build build-release test test-race go-lint go-vet govulncheck security go-update go-clean install
+.PHONY: default help build build-release test test-race coverage go-lint go-vet govulncheck security go-update go-clean install
 
 default: help
 
@@ -8,6 +8,7 @@ help:
 	@echo "  build-release  Build optimized release binary"
 	@echo "  test           Run all tests"
 	@echo "  test-race      Run tests with race detector"
+	@echo "  coverage       Run tests with coverage profile (coverage.out)"
 	@echo "  go-lint        Run golangci-lint on the codebase"
 	@echo "  go-vet         Run go vet"
 	@echo "  govulncheck    Scan for known vulnerabilities (CVEs)"
@@ -27,6 +28,10 @@ test:
 
 test-race:
 	go test ./... -race -count=1
+
+coverage:
+	go test ./... -count=1 -coverprofile=coverage.out
+	go tool cover -func=coverage.out | tail -n 1
 
 go-lint:
 	golangci-lint run ./...
