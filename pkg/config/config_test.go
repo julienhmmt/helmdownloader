@@ -65,6 +65,64 @@ func TestDefaultPath_EndsWithConventionalLocation(t *testing.T) {
 	assert.Equal(t, filepath.Join("helmdownloader", "config.yaml"), filepath.Join(filepath.Base(filepath.Dir(p)), filepath.Base(p)))
 }
 
+func TestDefaultPath_PrefersExistingHomeConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // Windows
+	t.Setenv("XDG_CONFIG_HOME", "")
+	// Clear AppData so UserConfigDir does not pull a system path on Windows.
+	t.Setenv("AppData", filepath.Join(home, "AppData", "Roaming"))
+	xdgDir := filepath.Join(home, ".config", "helmdownloader")
+	require.NoError(t, os.MkdirAll(xdgDir, 0o755))
+	want := filepath.Join(xdgDir, "config.yaml")
+	require.NoError(t, os.WriteFile(want, []byte("theme: ocean\n"), 0o644))
+	// Also plant a UserConfigDir-style file so preference is explicit when both exist.
+	appSupport := filepath.Join(home, "Library", "Application Support", "helmdownloader")
+	require.NoError(t, os.MkdirAll(appSupport, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(appSupport, "config.yaml"), []byte("theme: dark\n"), 0o644))
+	assert.Equal(t, want, config.DefaultPath())
+}
+
+func TestDefaultPath_FallsBackToUserConfigDirWhenOnlyThere(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("AppData", filepath.Join(home, "AppData", "Roaming"))
+	// Create only the platform UserConfigDir location.
+	userCfg, err := os.UserConfigDir()
+	require.NoError(t, err)
+	dir := filepath.Join(userCfg, "helmdownloader")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	want := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(want, []byte("theme: dark\n"), 0o644))
+	assert.Equal(t, want, config.DefaultPath())
+}
+
+func TestDefaultPath_NoFilePrefersXDGStyle(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("AppData", filepath.Join(home, "AppData", "Roaming"))
+	want := filepath.Join(home, ".config", "helmdownloader", "config.yaml")
+	assert.Equal(t, want, config.DefaultPath())
+}
+
+func TestDefaultPath_RespectsXDGConfigHome(t *testing.T) {
+	home := t.TempDir()
+	xdg := filepath.Join(home, "xdg-config")
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	t.Setenv("AppData", filepath.Join(home, "AppData", "Roaming"))
+	dir := filepath.Join(xdg, "helmdownloader")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	want := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(want, []byte("theme: matrix\n"), 0o644))
+	assert.Equal(t, want, config.DefaultPath())
+}
+
 func TestLoad_ThemeFromYAML(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("theme: light\n"), 0o644))

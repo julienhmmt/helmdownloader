@@ -2,16 +2,20 @@
 # helmdownloader configuration example
 # =============================================================================
 #
-# Copy this file to one of:
-#   ~/.config/helmdownloader/config.yaml   (default path; auto-loaded)
-#   ./config.yaml                         (and pass -config ./config.yaml)
+# Copy this file to the default auto-load path (preferred):
+#   ~/.config/helmdownloader/config.yaml
+# Or, if that file does not exist, macOS also checks:
+#   ~/Library/Application Support/helmdownloader/config.yaml
+# Or pass an explicit path:
+#   ./config.yaml   →   helmdownloader -config ./config.yaml
 #
 # Usage:
+#   mkdir -p ~/.config/helmdownloader
 #   cp config.example.yaml ~/.config/helmdownloader/config.yaml
 #   # edit as needed, then:
 #   helmdownloader
 #   helmdownloader -config /path/to/config.yaml
-#
+##
 # Precedence (highest wins):
 #   1. CLI flags (when set / non-sentinel)
 #   2. Values in this file

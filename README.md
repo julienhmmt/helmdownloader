@@ -110,6 +110,8 @@ The status line reports the active `sort:`, `filter:`, and the count of charts s
 ### Configuration File
 
 Create `~/.config/helmdownloader/config.yaml` (or pass `-config /path/to/file`).
+That path is preferred on all platforms. If it is missing, helmdownloader also
+looks at the OS config dir (on macOS: `~/Library/Application Support/helmdownloader/config.yaml`).
 A full annotated copy of every option lives in [`config.example.yaml`](./config.example.yaml):
 
 ```bash
