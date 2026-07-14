@@ -83,6 +83,7 @@ type model struct {
 	prepared        pipeline.Prepared
 	reviewImages    []images.Image
 	reviewCursor    int
+	reviewOffset    int // first visible index in reviewImages (windowed list)
 
 	activity    chan tea.Msg
 	downCurrent int
@@ -95,8 +96,12 @@ type model struct {
 	failures      []pipeline.ImageFailure
 	bundlePath    string
 	err           error
-	// status is a short, ephemeral line for soft feedback (deprecation confirm,
-	// recoverable UX). Not an error state.
+	// errStep labels which async step failed (search, prepare, download, bundle)
+	// so the error screen can frame the message for the user.
+	errStep string
+	// status is a short, ephemeral line shown under the body (not an error
+	// state). Cleared on most navigation. Prefer status over stateError for
+	// recoverable UX (empty results, silent no-ops, soft validation).
 	status string
 	// reviewWarnAck tracks whether the user already acknowledged a progressive
 	// safety warning on the review screen (deprecated chart / prerelease).
@@ -153,9 +158,10 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return model{
+	client, clientErr := artifacthub.New(cfg.ArtifactHubURL, cfg.HTTPSProxy, logger)
+	m := model{
 		cfg:           cfg,
-		client:        artifacthub.New(cfg.ArtifactHubURL, logger),
+		client:        client,
 		pipeline:      pipeline.New(cfg, logger),
 		styles:        newStyles(),
 		logger:        logger,
@@ -174,6 +180,11 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 		sortField:     sortStars,
 		sortDir:       sortDesc,
 	}
+	if clientErr != nil {
+		m.state = stateError
+		m.err = clientErr
+	}
+	return m
 }
 
 // Init starts the spinner ticking.

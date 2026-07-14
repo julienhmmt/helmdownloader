@@ -25,6 +25,7 @@ func TestBuildProvenance(t *testing.T) {
 	var got provenance
 	require.NoError(t, json.Unmarshal(data, &got))
 	assert.Equal(t, "helmdownloader", got.Tool)
+	assert.NotEmpty(t, got.ToolVersion)
 	assert.Equal(t, "2026-06-04T12:00:00Z", got.CreatedAt)
 	assert.Equal(t, "argo-cd", got.Chart.Name)
 	assert.Equal(t, "1.0.0", got.Chart.Version)

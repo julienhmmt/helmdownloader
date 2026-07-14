@@ -47,7 +47,7 @@ func TestImportImages_ReadsJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "images.json")
 	entries := []imageListEntry{
-		{Ref: "quay.io/x:1", Selected: true},
+		{Ref: "quay.io/argoproj/argocd:v2", Selected: true},
 		{Ref: "redis:7", Selected: false},
 	}
 	data, err := json.MarshalIndent(entries, "", "  ")
@@ -56,7 +56,7 @@ func TestImportImages_ReadsJSON(t *testing.T) {
 	imgs, err := importImages(path)
 	require.NoError(t, err)
 	require.Len(t, imgs, 2)
-	assert.Equal(t, "quay.io/x:1", imgs[0].Ref)
+	assert.Equal(t, "quay.io/argoproj/argocd:v2", imgs[0].Ref)
 	assert.True(t, imgs[0].Selected)
 	assert.Equal(t, "redis:7", imgs[1].Ref)
 	assert.False(t, imgs[1].Selected)
@@ -81,6 +81,22 @@ func TestImportImages_MalformedJSONErrors(t *testing.T) {
 	_, err := importImages(path)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "parse image list")
+}
+
+func TestImportImages_RejectsInvalidRef(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "images.json")
+	entries := []imageListEntry{
+		{Ref: "nginx:1.27", Selected: true},
+		{Ref: "not a ref", Selected: true},
+	}
+	data, err := json.MarshalIndent(entries, "", "  ")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+	_, err = importImages(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid image ref")
+	assert.Contains(t, err.Error(), "entry 1")
 }
 
 func TestExportImport_RoundTrip(t *testing.T) {

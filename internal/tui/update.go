@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
@@ -24,51 +25,100 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		return m.handleKey(typed)
 	case searchResultMsg:
+		// Stale if the user cancelled search and already moved on.
+		if m.state != stateSearching {
+			return m, nil
+		}
 		m.state = stateResults
+		m.errStep = ""
 		m.allPackages = typed.packages
 		m.filterField = filterNone
 		m.filterValue = ""
 		m.refreshResults()
+		if len(typed.packages) == 0 {
+			m.setStatus("No charts found. Try a different query.")
+		} else {
+			m.clearStatus()
+		}
 		return m, nil
 	case versionsMsg:
+		if m.state != stateSearching {
+			return m, nil
+		}
 		m.state = stateVersions
+		m.errStep = ""
 		m.versions.SetItems(versionsToItems(typed.versions))
+		if len(typed.versions) == 0 {
+			m.setStatus("No versions returned for this chart.")
+		} else {
+			m.clearStatus()
+		}
 		return m, nil
 	case preparedMsg:
+		if m.state != statePreparing {
+			return m, nil
+		}
 		m.prepared = typed.prepared
 		m.reviewImages = typed.prepared.Images
 		m.reviewCursor = 0
+		m.reviewOffset = 0
 		m.reviewWarnAck = false
 		m.clearStatus()
 		m.state = stateReview
+		m.errStep = ""
 		if err := exportImages(m.cfg.ExportImages, m.reviewImages); err != nil {
 			m.err = err
+			m.errStep = "prepare"
 			m.state = stateError
 			return m, nil
 		}
 		return m, nil
 	case progressMsg:
+		if m.state != stateDownloading {
+			return m, nil
+		}
 		m.downCurrent, m.downTotal = typed.current, typed.total
 		delete(m.imageProgress, typed.ref)
 		return m, waitForActivity(m.activity)
 	case byteProgressMsg:
+		if m.state != stateDownloading {
+			return m, nil
+		}
 		m.imageProgress[typed.ref] = imageProgress{written: typed.written, total: typed.total}
 		return m, waitForActivity(m.activity)
 	case downloadDoneMsg:
+		// Ignore completion after the user cancelled download and left the screen.
+		if m.state != stateDownloading {
+			return m, nil
+		}
 		m.entries = append(m.entries, typed.entries...)
 		m.failures = typed.failures
+		m.errStep = ""
 		if len(typed.failures) == 0 {
 			m.state = stateBundling
+			m.errStep = "bundle"
 			return m, tea.Batch(m.spinner.Tick,
 				bundleCmd(m.pipeline, m.prepared, m.selectedPkg, m.selectedVersion, m.entries))
 		}
 		m.state = stateDownloadReview
 		return m, nil
 	case doneMsg:
+		if m.state != stateBundling {
+			return m, nil
+		}
 		m.bundlePath = typed.bundlePath
 		m.state = stateDone
+		m.errStep = ""
 		return m, nil
 	case errMsg:
+		// Drop errors that arrive after cancel already left the busy state that
+		// produced them (e.g. context.Canceled from a cancelled search/download).
+		switch m.state {
+		case stateSearching, statePreparing, stateDownloading, stateBundling:
+			// Accept — still on the busy screen that issued the work.
+		default:
+			return m, nil
+		}
 		m.err = typed.err
 		m.state = stateError
 		return m, nil
@@ -120,10 +170,60 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleAddImageKey(msg)
 	case stateDownloadReview:
 		return m.handleDownloadReviewKey(msg)
+	case stateSearching, statePreparing, stateDownloading, stateBundling:
+		return m.handleBusyKey(msg)
 	case stateDone, stateError:
 		return m.handleEndKey(msg)
 	}
 	return m.updateComponents(msg)
+}
+
+// handleBusyKey cancels long-running ops without quitting the process.
+// Bundle has no context, so Esc is a no-op during bundling; ctrl+c still quits.
+func (m model) handleBusyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if msg.String() != "esc" {
+		return m.updateComponents(msg)
+	}
+	switch m.state {
+	case stateSearching:
+		m.cancel()
+		m.ctx, m.cancel = context.WithCancel(context.Background())
+		// Prefer results if packages are already loaded (versions fetch also uses
+		// stateSearching); otherwise return to the search prompt.
+		if len(m.allPackages) > 0 {
+			m.state = stateResults
+		} else {
+			m.state = stateSearch
+		}
+		m.errStep = ""
+		return m, nil
+	case statePreparing:
+		m.cancel()
+		m.ctx, m.cancel = context.WithCancel(context.Background())
+		cleanup := cleanupCmd(m.prepared.WorkDir, m.prepared.TempWorkDir)
+		if m.selectedPkg.Name != "" {
+			m.state = stateVersions
+		} else {
+			m.state = stateSearch
+		}
+		m.errStep = ""
+		return m, cleanup
+	case stateDownloading:
+		m.cancel()
+		m.ctx, m.cancel = context.WithCancel(context.Background())
+		m.imageProgress = map[string]imageProgress{}
+		m.errStep = ""
+		if len(m.entries) > 0 {
+			m.state = stateDownloadReview
+		} else {
+			m.state = stateReview
+		}
+		return m, nil
+	case stateBundling:
+		// Bundle ignores ctx; cancelling mid-write risks a partial archive.
+		return m, nil
+	}
+	return m, nil
 }
 
 // handleSearchKey processes input on the search screen.
@@ -135,6 +235,7 @@ func (m model) handleSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.state = stateSearching
+		m.errStep = "search"
 		return m, tea.Batch(m.spinner.Tick, searchCmd(m.ctx, m.client, query, m.cfg.SearchLimit))
 	case "esc":
 		m.cancel()
@@ -159,6 +260,7 @@ func (m model) handleResultsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		m.selectedPkg = item.pkg
 		m.state = stateSearching
+		m.errStep = "search"
 		return m, tea.Batch(m.spinner.Tick, versionsCmd(m.ctx, m.client, item.pkg))
 	case "s": // cycle sort field: stars → name → updated → stars
 		m.sortField = cycleSortField(m.sortField)
@@ -260,6 +362,7 @@ func (m model) handleVersionsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		m.selectedVersion = item.version.Version
 		m.state = statePreparing
+		m.errStep = "prepare"
 		var cleanup tea.Cmd
 		if m.prepared.WorkDir != "" {
 			cleanup = cleanupCmd(m.prepared.WorkDir, m.prepared.TempWorkDir)
@@ -278,6 +381,7 @@ func (m model) handleVersionsKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
+		m.clearStatus()
 		m.state = stateVersions
 		return m, nil
 	case "up", "k":
@@ -288,11 +392,30 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.reviewCursor < len(m.reviewImages)-1 {
 			m.reviewCursor++
 		}
+	case "pgup", "ctrl+u":
+		_, visible := m.reviewViewport()
+		m.reviewCursor -= visible
+		if m.reviewCursor < 0 {
+			m.reviewCursor = 0
+		}
+	case "pgdown", "ctrl+d":
+		_, visible := m.reviewViewport()
+		m.reviewCursor += visible
+		if n := len(m.reviewImages); n > 0 && m.reviewCursor >= n {
+			m.reviewCursor = n - 1
+		}
+	case "g", "home":
+		m.reviewCursor = 0
+	case "G", "end":
+		if n := len(m.reviewImages); n > 0 {
+			m.reviewCursor = n - 1
+		}
 	case "space":
 		if len(m.reviewImages) > 0 {
 			m.reviewImages[m.reviewCursor].Selected = !m.reviewImages[m.reviewCursor].Selected
 		}
 	case "a":
+		m.clearStatus()
 		m.addInput.SetValue("")
 		m.addInput.Focus()
 		m.state = stateAddImage
@@ -306,6 +429,7 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		if m.countSelected() == 0 {
+			m.setStatus("Select at least one image (space), or press a to add one.")
 			return m, nil
 		}
 		if warn := m.reviewSafetyWarning(); warn != "" && !m.reviewWarnAck {
@@ -313,13 +437,13 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.setStatus(warn)
 			return m, nil
 		}
-		m.clearStatus()
 		// If an approved image list was provided, it overrides the discovered
 		// set: only refs present in the import (and marked Selected) are pulled.
 		if m.cfg.ImportImages != "" {
 			imported, err := importImages(m.cfg.ImportImages)
 			if err != nil {
 				m.err = err
+				m.errStep = "download"
 				m.state = stateError
 				return m, nil
 			}
@@ -328,8 +452,10 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if m.countSelected() == 0 {
-			return m, nil // import may have deselected everything
+			m.setStatus("Select at least one image (space), or press a to add one.")
+			return m, nil
 		}
+		m.clearStatus()
 		m.prepared.Images = m.reviewImages
 		refs := selectedRefs(m.reviewImages)
 		m.entries, m.failures = nil, nil
@@ -338,6 +464,7 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.downCurrent, m.downTotal = 0, len(refs)
 		return m, tea.Batch(m.spinner.Tick, downloadCmd(m.ctx, m.pipeline, m.prepared, refs, m.activity))
 	}
+	m.ensureReviewCursorVisible()
 	return m, nil
 }
 
@@ -350,6 +477,7 @@ func (m model) handleDownloadReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 		m.failures = nil
 		m.imageProgress = map[string]imageProgress{}
 		m.state = stateDownloading
+		m.errStep = "download"
 		m.downCurrent, m.downTotal = 0, len(refs)
 		return m, tea.Batch(m.spinner.Tick, downloadCmd(m.ctx, m.pipeline, m.prepared, refs, m.activity))
 	case "c":
@@ -357,6 +485,7 @@ func (m model) handleDownloadReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 			return m, nil
 		}
 		m.state = stateBundling
+		m.errStep = "bundle"
 		return m, tea.Batch(m.spinner.Tick,
 			bundleCmd(m.pipeline, m.prepared, m.selectedPkg, m.selectedVersion, m.entries))
 	case "q", "esc":
@@ -370,19 +499,44 @@ func (m model) handleDownloadReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 func (m model) handleAddImageKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
-		ref := m.addInput.Value()
-		if ref != "" {
-			m.reviewImages = append(m.reviewImages, images.Image{Ref: ref, Selected: true})
+		ref := strings.TrimSpace(m.addInput.Value())
+		if ref == "" {
+			m.addInput.Blur()
+			m.clearStatus()
+			m.state = stateReview
+			m.ensureReviewCursorVisible()
+			return m, nil
 		}
+		if !looksLikeImageRef(ref) {
+			// Stay on add screen so the user can edit; do not abort review.
+			m.setStatus("Invalid image reference.")
+			return m, nil
+		}
+		m.reviewImages = append(m.reviewImages, images.Image{Ref: ref, Selected: true})
+		m.reviewCursor = len(m.reviewImages) - 1
 		m.addInput.Blur()
+		m.clearStatus()
 		m.state = stateReview
+		m.ensureReviewCursorVisible()
 		return m, nil
 	case "esc":
 		m.addInput.Blur()
+		m.clearStatus()
 		m.state = stateReview
+		m.ensureReviewCursorVisible()
 		return m, nil
 	}
 	return m.updateComponents(msg)
+}
+
+// looksLikeImageRef applies light heuristics for manual add until a stricter
+// images.ValidRef lands (plan 004). Matches discovery's isImageRef spirit.
+func looksLikeImageRef(ref string) bool {
+	ref = strings.TrimSpace(ref)
+	if ref == "" || strings.ContainsAny(ref, " \t\n{}") {
+		return false
+	}
+	return strings.Contains(ref, ":") || strings.Contains(ref, "@") || strings.Contains(ref, "/")
 }
 
 // handleEndKey processes the terminal done/error screens.

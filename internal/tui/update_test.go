@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
+	"github.com/julienhmmt/helmdownloader/pkg/bundle"
 	"github.com/julienhmmt/helmdownloader/pkg/config"
 	"github.com/julienhmmt/helmdownloader/pkg/images"
 	"github.com/julienhmmt/helmdownloader/pkg/log"
@@ -168,6 +169,7 @@ func TestHandleFilterInputKey_TabCyclesValues(t *testing.T) {
 
 func TestSearchResultMsg_StoresAllPackagesAndAppliesSortFilter(t *testing.T) {
 	m := newResultsModel()
+	m.state = stateSearching // required so the result is not treated as stale
 	m.allPackages = nil
 	m.results.SetItems(nil)
 	m.filterField = filterAuthor
@@ -196,6 +198,63 @@ func TestVisiblePackages_RespectsSortAndFilter(t *testing.T) {
 	require.Len(t, got, 2) // redis + nginx
 	assert.Equal(t, "nginx", got[0].Name)
 	assert.Equal(t, "redis", got[1].Name)
+}
+
+func TestDownloadDoneMsg_StaleWhileReviewIgnored(t *testing.T) {
+	m := newTestModel()
+	m.state = stateReview
+	m.entries = nil
+	got, cmd := m.Update(downloadDoneMsg{
+		entries: []bundle.ImageEntry{{SourceRef: "x:1"}},
+	})
+	m2 := got.(model)
+	assert.Equal(t, stateReview, m2.state)
+	assert.Empty(t, m2.entries)
+	assert.Nil(t, cmd)
+}
+
+func TestHandleBusyKey_EscDownloadingReturnsReview(t *testing.T) {
+	m := newTestModel()
+	m.state = stateDownloading
+	m.errStep = "download"
+	got, _ := m.handleBusyKey(keyPress("esc"))
+	m2 := got.(model)
+	assert.Equal(t, stateReview, m2.state)
+	assert.Empty(t, m2.errStep)
+}
+
+func TestHandleBusyKey_EscDownloadingWithEntriesGoesDownloadReview(t *testing.T) {
+	m := newTestModel()
+	m.state = stateDownloading
+	m.entries = []bundle.ImageEntry{{SourceRef: "x:1"}}
+	got, _ := m.handleBusyKey(keyPress("esc"))
+	m2 := got.(model)
+	assert.Equal(t, stateDownloadReview, m2.state)
+}
+
+func TestHandleBusyKey_EscSearchingBackToSearch(t *testing.T) {
+	m := newTestModel()
+	m.state = stateSearching
+	got, _ := m.handleBusyKey(keyPress("esc"))
+	m2 := got.(model)
+	assert.Equal(t, stateSearch, m2.state)
+}
+
+func TestHandleBusyKey_EscPreparingGoesVersions(t *testing.T) {
+	m := newTestModel()
+	m.state = statePreparing
+	m.selectedPkg = artifacthub.Package{Name: "argo-cd"}
+	got, _ := m.handleBusyKey(keyPress("esc"))
+	m2 := got.(model)
+	assert.Equal(t, stateVersions, m2.state)
+}
+
+func TestHandleBusyKey_EscBundlingIsNoop(t *testing.T) {
+	m := newTestModel()
+	m.state = stateBundling
+	got, _ := m.handleBusyKey(keyPress("esc"))
+	m2 := got.(model)
+	assert.Equal(t, stateBundling, m2.state)
 }
 
 func TestHandleReviewKey_DeprecatedRequiresSecondEnter(t *testing.T) {

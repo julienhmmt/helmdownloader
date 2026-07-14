@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -57,18 +58,24 @@ func (m model) viewSearch() string {
 	return m.screen("HelmDownloader", "airgap chart bundler", body, "enter search · esc quit")
 }
 
-// viewBusy renders a centered spinner with a contextual label.
+// viewBusy renders a centered spinner with a contextual label and cancel help.
 func (m model) viewBusy() string {
 	label := "Searching ArtifactHub…"
 	if m.state == statePreparing {
 		label = fmt.Sprintf("Pulling and rendering %s %s…", m.selectedPkg.Name, m.selectedVersion)
 	}
-	return m.frame(fmt.Sprintf("%s %s", m.spinner.View(), label))
+	body := lipgloss.JoinVertical(lipgloss.Left,
+		fmt.Sprintf("%s %s", m.spinner.View(), label),
+		"",
+		m.renderHelp("esc cancel · ctrl+c quit"),
+	)
+	return m.frame(body)
 }
 
 // viewList renders a bubbles list with a styled footer. List screens are left
 // unframed: the widget manages its own sizing and a border would fight it.
 // On the results screen, a sort/filter status line is shown above the footer.
+// Soft m.status feedback is rendered between body and help when set.
 func (m model) viewList(body string) string {
 	lines := []string{body}
 	if m.state == stateResults {
@@ -136,7 +143,8 @@ func (m model) viewFilterInput() string {
 		"enter apply · tab cycle · esc cancel")
 }
 
-// viewReview renders the image checklist inside the app frame.
+// viewReview renders the image checklist inside the app frame. Only a window
+// of rows is drawn so large charts remain navigable on short terminals.
 func (m model) viewReview() string {
 	title := fmt.Sprintf("Images · %s %s", m.selectedPkg.Name, m.selectedVersion)
 	subtitle := fmt.Sprintf("%d selected of %d", m.countSelected(), len(m.reviewImages))
@@ -144,19 +152,36 @@ func (m model) viewReview() string {
 	var rows strings.Builder
 	if len(m.reviewImages) == 0 {
 		rows.WriteString(m.styles.muted.Render("No images discovered. Press 'a' to add one manually."))
-	}
-	for index, img := range m.reviewImages {
-		cursor := "  "
-		if index == m.reviewCursor {
-			cursor = m.styles.cursor.Render("▸ ")
+	} else {
+		start, visible := m.reviewViewport()
+		end := start + visible
+		if end > len(m.reviewImages) {
+			end = len(m.reviewImages)
 		}
-		box := "[ ]"
-		if img.Selected {
-			box = m.styles.checked.Render("[x]")
-		}
-		fmt.Fprintf(&rows, "%s%s %s", cursor, box, img.Ref)
-		if index < len(m.reviewImages)-1 {
+		refWidth := m.reviewInnerWidth()
+		if start > 0 {
+			rows.WriteString(m.styles.faint.Render(fmt.Sprintf("↑ %d more", start)))
 			rows.WriteString("\n")
+		}
+		for index := start; index < end; index++ {
+			img := m.reviewImages[index]
+			cursor := "  "
+			if index == m.reviewCursor {
+				cursor = m.styles.cursor.Render("▸ ")
+			}
+			box := "[ ]"
+			if img.Selected {
+				box = m.styles.checked.Render("[x]")
+			}
+			ref := truncateMiddle(img.Ref, refWidth)
+			fmt.Fprintf(&rows, "%s%s %s", cursor, box, ref)
+			if index < end-1 {
+				rows.WriteString("\n")
+			}
+		}
+		if end < len(m.reviewImages) {
+			rows.WriteString("\n")
+			rows.WriteString(m.styles.faint.Render(fmt.Sprintf("↓ %d more", len(m.reviewImages)-end)))
 		}
 	}
 
@@ -164,7 +189,7 @@ func (m model) viewReview() string {
 		m.cfg.RegistryPrefix, m.cfg.Platform, m.cfg.OutputDir))
 	body := lipgloss.JoinVertical(lipgloss.Left, rows.String(), "", meta)
 	return m.screen(title, subtitle, body,
-		"space toggle · a add · d delete · enter download · esc back")
+		"space toggle · a add · d delete · j/k move · pgup/pgdn page · g/G jump · enter download · esc back")
 }
 
 // viewAddImage renders the manual image entry prompt.
@@ -208,7 +233,7 @@ func (m model) viewDownloading() string {
 	}
 
 	body := lipgloss.JoinVertical(lipgloss.Left, lines...)
-	return m.screen("Downloading images", "", body, "saving image tarballs, please wait…")
+	return m.screen("Downloading images", "", body, "esc cancel · ctrl+c quit")
 }
 
 // miniBar renders a width-cell ASCII progress bar for (written/total).
@@ -246,8 +271,14 @@ func (m model) byteLabel(written, total int64) string {
 }
 
 // viewBundling renders the brief archive-assembly step.
+// Bundle ignores ctx, so Esc is a no-op; only ctrl+c aborts the whole process.
 func (m model) viewBundling() string {
-	return m.frame(fmt.Sprintf("%s Assembling bundle…", m.spinner.View()))
+	body := lipgloss.JoinVertical(lipgloss.Left,
+		fmt.Sprintf("%s Assembling bundle…", m.spinner.View()),
+		"",
+		m.renderHelp("ctrl+c quit"),
+	)
+	return m.frame(body)
 }
 
 // viewDownloadReview lists the images that failed to download and the reasons,
@@ -303,24 +334,54 @@ func errLine(err error) string {
 	return strings.ReplaceAll(err.Error(), "\n", " ")
 }
 
-// viewDone renders the success summary.
+// viewDone renders the success summary with image counts and next-step hints.
 func (m model) viewDone() string {
 	lines := []string{
 		m.styles.success.Render("✓ Bundle created"),
 		"",
 		m.bundlePath,
 	}
-	if len(m.failures) > 0 {
-		lines = append(lines, m.styles.errorMsg.Render(
-			fmt.Sprintf("%d image(s) failed and were skipped", len(m.failures))))
+	if sizeHint := bundleSizeHint(m.bundlePath); sizeHint != "" {
+		lines = append(lines, m.styles.muted.Render(sizeHint))
 	}
-	lines = append(lines, "", m.renderHelp("n new bundle · q quit"))
+	lines = append(lines, "")
+	summary := fmt.Sprintf("%d images", len(m.entries))
+	if len(m.failures) > 0 {
+		summary = fmt.Sprintf("%d images · %d failed (skipped)", len(m.entries), len(m.failures))
+		lines = append(lines, m.styles.errorMsg.Render(summary))
+	} else {
+		lines = append(lines, m.styles.muted.Render(summary))
+	}
+	lines = append(lines,
+		"",
+		m.styles.muted.Render("Next:"),
+		m.styles.muted.Render(fmt.Sprintf("  helmdownloader verify %s", m.bundlePath)),
+		m.styles.muted.Render(fmt.Sprintf("  tar xzf %s && ./load.sh", m.bundlePath)),
+		"",
+		m.renderHelp("n new bundle · q quit"),
+	)
 	return m.frame(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }
 
-// viewError renders the error screen.
+// bundleSizeHint returns a human-readable size for path, or empty if unavailable.
+func bundleSizeHint(path string) string {
+	if path == "" {
+		return ""
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return ""
+	}
+	return humanBytes(info.Size())
+}
+
+// viewError renders the error screen with an optional step label.
 func (m model) viewError() string {
-	lines := []string{m.styles.errorMsg.Render("Error"), ""}
+	title := "Error"
+	if m.errStep != "" {
+		title = fmt.Sprintf("Error · %s", m.errStep)
+	}
+	lines := []string{m.styles.errorMsg.Render(title), ""}
 	if m.err != nil {
 		lines = append(lines, m.err.Error())
 	}
