@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
@@ -362,8 +363,12 @@ func (m model) handleDownloadReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 func (m model) handleAddImageKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
-		ref := m.addInput.Value()
+		ref := strings.TrimSpace(m.addInput.Value())
 		if ref != "" {
+			if !images.ValidRef(ref) {
+				// Stay on add screen so the user can edit; do not abort review.
+				return m, nil
+			}
 			m.reviewImages = append(m.reviewImages, images.Image{Ref: ref, Selected: true})
 		}
 		m.addInput.Blur()
