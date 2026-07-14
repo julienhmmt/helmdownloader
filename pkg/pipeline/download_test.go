@@ -36,7 +36,7 @@ type fakeSaver struct {
 	attempts map[string]int
 }
 
-func (f *fakeSaver) Save(_ context.Context, srcRef, _, _ string, _ registry.BytesFunc) (string, error) {
+func (f *fakeSaver) Save(_ context.Context, srcRef, _, destPath string, _ registry.BytesFunc) (string, error) {
 	f.mu.Lock()
 	f.inFlight++
 	if f.inFlight > f.peak {
@@ -62,6 +62,12 @@ func (f *fakeSaver) Save(_ context.Context, srcRef, _, _ string, _ registry.Byte
 	}
 	if n, ok := f.failUntil[srcRef]; ok && attempt <= n {
 		return "", fmt.Errorf("transient %d: %s", attempt, srcRef)
+	}
+	// Write a small file so resume content-hash sidecars can stream-hash it.
+	if destPath != "" {
+		if err := os.WriteFile(destPath, []byte("fake-tar-"+srcRef), 0o644); err != nil {
+			return "", err
+		}
 	}
 	return "sha256:fake", nil
 }
@@ -158,6 +164,15 @@ func TestDownload_ReportsProgressOncePerImage(t *testing.T) {
 	assert.Equal(t, int32(len(refs)), maxCurrent)
 }
 
+// writeResumeSidecarsForTest writes .digest and a matching .sha256 for path.
+func writeResumeSidecarsForTest(t *testing.T, tarPath, regDigest string) {
+	t.Helper()
+	require.NoError(t, os.WriteFile(tarPath+".digest", []byte(regDigest), 0o644))
+	sum, err := fileSHA256(tarPath)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(tarPath+".sha256", []byte(sum), 0o644))
+}
+
 func TestDownload_ResumeReusesExistingTarball(t *testing.T) {
 	refs := []string{"repo/cached:1", "repo/fresh:2"}
 	saver := &fakeSaver{}
@@ -165,14 +180,13 @@ func TestDownload_ResumeReusesExistingTarball(t *testing.T) {
 	pl.cfg.Resume = true
 	workDir := t.TempDir()
 
-	// Pre-seed a valid tarball + digest sidecar for the first ref, as a prior
-	// successful run would (a real docker tarball ends with the two trailing
-	// zero blocks that tarballComplete checks for).
+	// Pre-seed a valid tarball + digest + content-hash sidecars for the first
+	// ref, as a prior successful run would.
 	imagesDir := filepath.Join(workDir, "images")
 	require.NoError(t, os.MkdirAll(imagesDir, 0o755))
 	cachedTar := filepath.Join(imagesDir, tarballName("repo/cached:1"))
 	writeMinimalTar(t, cachedTar)
-	require.NoError(t, os.WriteFile(cachedTar+".digest", []byte("sha256:cached"), 0o644))
+	writeResumeSidecarsForTest(t, cachedTar, "sha256:cached")
 
 	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: workDir}, refs, nil, nil)
 	require.NoError(t, err)
@@ -192,13 +206,12 @@ func TestDownload_ResumeRejectsTruncatedTarball(t *testing.T) {
 	pl.cfg.Resume = true
 	workDir := t.TempDir()
 
-	// Seed a truncated tarball (raw bytes, not a valid tar) with a sidecar:
-	// it has a digest but fails tarballComplete, so it must be re-pulled.
+	// Seed a truncated tarball with both sidecars: tarballComplete fails.
 	imagesDir := filepath.Join(workDir, "images")
 	require.NoError(t, os.MkdirAll(imagesDir, 0o755))
 	cachedTar := filepath.Join(imagesDir, tarballName("repo/cached:1"))
 	require.NoError(t, os.WriteFile(cachedTar, []byte("not-a-complete-tar"), 0o644))
-	require.NoError(t, os.WriteFile(cachedTar+".digest", []byte("sha256:cached"), 0o644))
+	writeResumeSidecarsForTest(t, cachedTar, "sha256:cached")
 
 	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: workDir}, refs, nil, nil)
 	require.NoError(t, err)
@@ -217,8 +230,7 @@ func TestDownload_ResumeRejectsMissingSidecar(t *testing.T) {
 	pl.cfg.Resume = true
 	workDir := t.TempDir()
 
-	// Seed a complete valid tarball but NO digest sidecar: it cannot be
-	// integrity-pinned, so it must be re-pulled.
+	// Seed a complete valid tarball but NO digest sidecar: re-pull.
 	imagesDir := filepath.Join(workDir, "images")
 	require.NoError(t, os.MkdirAll(imagesDir, 0o755))
 	cachedTar := filepath.Join(imagesDir, tarballName("repo/cached:1"))
@@ -230,6 +242,90 @@ func TestDownload_ResumeRejectsMissingSidecar(t *testing.T) {
 	require.Len(t, entries, 2)
 	assert.Equal(t, 1, saver.attemptCount("docker.io/repo/cached:1"))
 	assert.Equal(t, "sha256:fake", entries[0].Digest)
+}
+
+func TestDownload_ResumeRejectsMissingContentHash(t *testing.T) {
+	// Old work dirs only had .digest; fail closed and re-pull without .sha256.
+	refs := []string{"repo/cached:1"}
+	saver := &fakeSaver{}
+	pl := newTestPipeline(saver, 1)
+	pl.cfg.Resume = true
+	workDir := t.TempDir()
+	imagesDir := filepath.Join(workDir, "images")
+	require.NoError(t, os.MkdirAll(imagesDir, 0o755))
+	cachedTar := filepath.Join(imagesDir, tarballName("repo/cached:1"))
+	writeMinimalTar(t, cachedTar)
+	require.NoError(t, os.WriteFile(cachedTar+".digest", []byte("sha256:cached"), 0o644))
+
+	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: workDir}, refs, nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, failures)
+	require.Len(t, entries, 1)
+	assert.Equal(t, 1, saver.attemptCount("docker.io/repo/cached:1"))
+	assert.Equal(t, "sha256:fake", entries[0].Digest)
+}
+
+func TestDownload_ResumeRejectsContentHashMismatch(t *testing.T) {
+	refs := []string{"repo/cached:1"}
+	saver := &fakeSaver{}
+	pl := newTestPipeline(saver, 1)
+	pl.cfg.Resume = true
+	workDir := t.TempDir()
+	imagesDir := filepath.Join(workDir, "images")
+	require.NoError(t, os.MkdirAll(imagesDir, 0o755))
+	cachedTar := filepath.Join(imagesDir, tarballName("repo/cached:1"))
+	writeMinimalTar(t, cachedTar)
+	require.NoError(t, os.WriteFile(cachedTar+".digest", []byte("sha256:cached"), 0o644))
+	require.NoError(t, os.WriteFile(cachedTar+".sha256", []byte("deadbeef"), 0o644))
+
+	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: workDir}, refs, nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, failures)
+	require.Len(t, entries, 1)
+	assert.Equal(t, 1, saver.attemptCount("docker.io/repo/cached:1"))
+}
+
+func TestDownload_ResumeRejectsTamperedTarWithStaleContentHash(t *testing.T) {
+	refs := []string{"repo/cached:1"}
+	saver := &fakeSaver{}
+	pl := newTestPipeline(saver, 1)
+	pl.cfg.Resume = true
+	workDir := t.TempDir()
+	imagesDir := filepath.Join(workDir, "images")
+	require.NoError(t, os.MkdirAll(imagesDir, 0o755))
+	cachedTar := filepath.Join(imagesDir, tarballName("repo/cached:1"))
+	writeMinimalTar(t, cachedTar)
+	writeResumeSidecarsForTest(t, cachedTar, "sha256:cached")
+	// Tamper bytes but leave the old content hash (attacker scenario).
+	data, err := os.ReadFile(cachedTar)
+	require.NoError(t, err)
+	data[0] ^= 0xff
+	require.NoError(t, os.WriteFile(cachedTar, data, 0o644))
+
+	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: workDir}, refs, nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, failures)
+	require.Len(t, entries, 1)
+	assert.Equal(t, 1, saver.attemptCount("docker.io/repo/cached:1"))
+}
+
+func TestDownload_WritesContentHashSidecar(t *testing.T) {
+	refs := []string{"repo/a:1"}
+	saver := &fakeSaver{}
+	pl := newTestPipeline(saver, 1)
+	workDir := t.TempDir()
+	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: workDir}, refs, nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, failures)
+	require.Len(t, entries, 1)
+	tarPath := entries[0].TarPath
+	_, err = os.Stat(tarPath + ".digest")
+	require.NoError(t, err)
+	sumBytes, err := os.ReadFile(tarPath + ".sha256")
+	require.NoError(t, err)
+	got, err := fileSHA256(tarPath)
+	require.NoError(t, err)
+	assert.Equal(t, got, strings.TrimSpace(string(sumBytes)))
 }
 
 func TestTarballComplete(t *testing.T) {
