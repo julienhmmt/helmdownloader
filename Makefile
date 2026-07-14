@@ -1,5 +1,8 @@
 .PHONY: default help build build-release test test-race coverage go-lint go-vet govulncheck security go-update go-clean install
 
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS_VERSION = -X github.com/julienhmmt/helmdownloader/pkg/version.Version=$(VERSION)
+
 default: help
 
 help:
@@ -18,10 +21,10 @@ help:
 	@echo "  install        Install the binary to \$$GOPATH/bin"
 
 build:
-	go build -o helmdownloader .
+	go build -ldflags "$(LDFLAGS_VERSION)" -o helmdownloader .
 
 build-release:
-	go build -ldflags="-s -w" -trimpath -o helmdownloader .
+	go build -ldflags="-s -w $(LDFLAGS_VERSION)" -trimpath -o helmdownloader .
 
 test:
 	go test ./... -count=1

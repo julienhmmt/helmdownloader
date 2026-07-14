@@ -111,7 +111,8 @@ func Create(spec Spec) (path string, err error) {
 		_ = tarWriter.Close()
 	}()
 	// checksums accumulates "<sha256>  <name>" lines (sha256sum -c format) for
-	// every bundled file except load.sh and sha256sums.txt themselves.
+	// every bundled file except sha256sums.txt itself (cannot self-hash in
+	// sha256sum -c format). load.sh is included.
 	var checksums sums
 	chartName := filepath.Base(spec.ChartPath)
 	sum, err := writeFileFromDisk(tarWriter, spec.ChartPath, chartName)
@@ -159,10 +160,14 @@ func Create(spec Spec) (path string, err error) {
 		return "", err
 	}
 	checksums.add(sum, "sbom.spdx.json")
-	if _, err = writeBytes(tarWriter, "sha256sums.txt", []byte(checksums.String())); err != nil {
+	// load.sh must be written and hashed before sha256sums.txt so the sums file
+	// covers the only executable path on the airgapped host.
+	script := []byte(buildLoadScript(spec.Images))
+	if sum, err = writeBytesMode(tarWriter, "load.sh", script, 0o755); err != nil {
 		return "", err
 	}
-	if _, err = writeBytesMode(tarWriter, "load.sh", []byte(buildLoadScript(spec.Images)), 0o755); err != nil {
+	checksums.add(sum, "load.sh")
+	if _, err = writeBytes(tarWriter, "sha256sums.txt", []byte(checksums.String())); err != nil {
 		return "", err
 	}
 	// Close the writer stack explicitly, innermost first, so a flush failure
@@ -216,8 +221,8 @@ func buildLoadScript(images []ImageEntry) string {
 	b.WriteString("run() {\n")
 	b.WriteString(`  if [ -n "$DRY_RUN" ]; then echo "DRY_RUN: $*"; else "$@"; fi` + "\n")
 	b.WriteString("}\n\n")
-	// Verify file integrity before touching the registry. Skip cleanly when no
-	// checksum tool is available rather than failing the whole load.
+	// Verify file integrity before touching the registry. Fail closed when no
+	// checksum tool is available — operators must be able to trust the load path.
 	b.WriteString("if [ -f \"$DIR/sha256sums.txt\" ]; then\n")
 	b.WriteString("  if command -v sha256sum >/dev/null 2>&1; then\n")
 	b.WriteString(`    echo ">> verifying checksums"` + "\n")
@@ -226,7 +231,8 @@ func buildLoadScript(images []ImageEntry) string {
 	b.WriteString(`    echo ">> verifying checksums"` + "\n")
 	b.WriteString(`    (cd "$DIR" && shasum -a 256 -c sha256sums.txt)` + "\n")
 	b.WriteString("  else\n")
-	b.WriteString(`    echo ">> no sha256sum/shasum found, skipping checksum verification" >&2` + "\n")
+	b.WriteString(`    echo ">> no sha256sum/shasum found; refuse to load without integrity check" >&2` + "\n")
+	b.WriteString("    exit 1\n")
 	b.WriteString("  fi\n")
 	b.WriteString("fi\n\n")
 	b.WriteString("load_and_push() {\n")
