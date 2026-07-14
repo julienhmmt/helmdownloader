@@ -109,6 +109,7 @@ func TestCreate_WritesAllEntries(t *testing.T) {
 	// manifest.json provenance is present and references the images.
 	require.Contains(t, contents, "manifest.json")
 	assert.Contains(t, contents["manifest.json"], `"tool": "helmdownloader"`)
+	assert.Contains(t, contents["manifest.json"], `"toolVersion":`)
 	assert.Contains(t, contents["manifest.json"], "sha256:aaa")
 	assert.Contains(t, sums, "  manifest.json")
 }
