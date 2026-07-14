@@ -398,10 +398,13 @@ func (m model) handleDownloadReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 func (m model) handleAddImageKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
-		ref := m.addInput.Value()
-		if ref != "" {
-			m.reviewImages = append(m.reviewImages, images.Image{Ref: ref, Selected: true})
-			m.reviewCursor = len(m.reviewImages) - 1
+		ref := strings.TrimSpace(m.addInput.Value())
+		if ref == "" {
+			m.addInput.Blur()
+			m.clearStatus()
+			m.state = stateReview
+			m.ensureReviewCursorVisible()
+			return m, nil
 		}
 		if !looksLikeImageRef(ref) {
 			// Stay on add screen so the user can edit; do not abort review.
@@ -409,6 +412,7 @@ func (m model) handleAddImageKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.reviewImages = append(m.reviewImages, images.Image{Ref: ref, Selected: true})
+		m.reviewCursor = len(m.reviewImages) - 1
 		m.addInput.Blur()
 		m.clearStatus()
 		m.state = stateReview
