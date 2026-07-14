@@ -96,6 +96,9 @@ type model struct {
 	failures      []pipeline.ImageFailure
 	bundlePath    string
 	err           error
+	// errStep labels which async step failed (search, prepare, download, bundle)
+	// so the error screen can frame the message for the user.
+	errStep string
 	// status is a short, ephemeral line shown under the body (not an error
 	// state). Cleared on most navigation. Prefer status over stateError for
 	// recoverable UX (empty results, silent no-ops, soft validation).
