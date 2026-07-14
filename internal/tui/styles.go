@@ -24,7 +24,11 @@ var (
 	// grey-on-grey lived here; this lifts it well above the background).
 	colorMuted = compat.AdaptiveColor{Light: lipgloss.Color("#7B8499"), Dark: lipgloss.Color("#79839B")}
 	// Faint slate — separators and de-emphasized chrome.
-	colorFaint  = compat.AdaptiveColor{Light: lipgloss.Color("#A7AEBE"), Dark: lipgloss.Color("#525C72")}
+	colorFaint = compat.AdaptiveColor{Light: lipgloss.Color("#A7AEBE"), Dark: lipgloss.Color("#525C72")}
+	// Soft hover wash for the focused list row. Light terminals get a warm
+	// parchment tint; dark terminals get a raised slate slab. Content stays
+	// primary/secondary on top so selection is a background, not a recolor.
+	colorHover  = compat.AdaptiveColor{Light: lipgloss.Color("#EDE6D4"), Dark: lipgloss.Color("#2A3344")}
 	colorGood   = compat.AdaptiveColor{Light: lipgloss.Color("#1F8A6B"), Dark: lipgloss.Color("#4FC9A6")}
 	colorBad    = compat.AdaptiveColor{Light: lipgloss.Color("#C5402F"), Dark: lipgloss.Color("#E8786B")}
 	colorBorder = compat.AdaptiveColor{Light: lipgloss.Color("#C4CAD6"), Dark: lipgloss.Color("#39414F")}
@@ -42,6 +46,7 @@ type styleSet struct {
 	help      lipgloss.Style
 	selected  lipgloss.Style
 	cursor    lipgloss.Style
+	hover     lipgloss.Style
 	checked   lipgloss.Style
 	errorMsg  lipgloss.Style
 	success   lipgloss.Style
@@ -63,6 +68,7 @@ func newStyles() styleSet {
 		help:      lipgloss.NewStyle().Foreground(colorMuted),
 		selected:  lipgloss.NewStyle().Foreground(colorAccent).Bold(true),
 		cursor:    lipgloss.NewStyle().Foreground(colorAccent).Bold(true),
+		hover:     lipgloss.NewStyle().Foreground(colorPrimary).Background(colorHover),
 		checked:   lipgloss.NewStyle().Foreground(colorGood),
 		errorMsg:  lipgloss.NewStyle().Foreground(colorBad).Bold(true),
 		success:   lipgloss.NewStyle().Foreground(colorGood).Bold(true),
@@ -70,9 +76,10 @@ func newStyles() styleSet {
 }
 
 // chartDelegateStyles returns the list item styles used for the chart and
-// version lists. The selected item is shown in the amber accent without the
-// library's default side-stripe border, keeping the layout clean and avoiding
-// the awkward visual bump the border creates on narrow terminals.
+// version lists. The focused row uses a soft background wash rather than
+// recoloring the text, so selection stays obvious without fighting the
+// primary/secondary hierarchy. No side-stripe border — that creates an
+// awkward visual bump on narrow terminals.
 func chartDelegateStyles() list.DefaultItemStyles {
 	s := list.NewDefaultItemStyles(true)
 	s.NormalTitle = lipgloss.NewStyle().
@@ -82,11 +89,13 @@ func chartDelegateStyles() list.DefaultItemStyles {
 		Foreground(colorSecondary).
 		Padding(0, 0, 0, 1)
 	s.SelectedTitle = lipgloss.NewStyle().
-		Foreground(colorAccent).
+		Foreground(colorPrimary).
+		Background(colorHover).
 		Bold(true).
 		Padding(0, 0, 0, 1)
 	s.SelectedDesc = lipgloss.NewStyle().
 		Foreground(colorSecondary).
+		Background(colorHover).
 		Padding(0, 0, 0, 1)
 	s.DimmedTitle = lipgloss.NewStyle().
 		Foreground(colorMuted).

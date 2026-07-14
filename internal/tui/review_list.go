@@ -60,13 +60,26 @@ func (m *model) ensureReviewCursorVisible() {
 	}
 }
 
-// reviewInnerWidth returns the max display width available for an image ref.
-func (m model) reviewInnerWidth() int {
+// reviewFrameInnerWidth returns the content width inside the review frame
+// (panel width minus horizontal padding).
+func (m model) reviewFrameInnerWidth() int {
 	inner := maxFrameWidth
 	if m.width > 0 {
 		inner = max(0, min(maxFrameWidth, m.width-4))
 	}
-	return max(10, inner-6)
+	// frame style pads 1,2 → horizontal padding of 4.
+	return max(10, inner-4)
+}
+
+// reviewRowWidth is the full width of a review checklist row (for full-line hover).
+func (m model) reviewRowWidth() int {
+	return m.reviewFrameInnerWidth()
+}
+
+// reviewInnerWidth returns the max display width available for an image ref.
+func (m model) reviewInnerWidth() int {
+	// "▸ " (2) + "[x]" (3) + space (1) = 6 prefix cells before the ref.
+	return max(10, m.reviewFrameInnerWidth()-6)
 }
 
 // truncateMiddle shortens s so its display width is at most maxW, replacing

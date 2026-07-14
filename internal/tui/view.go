@@ -163,18 +163,30 @@ func (m model) viewReview() string {
 			rows.WriteString(m.styles.faint.Render(fmt.Sprintf("↑ %d more", start)))
 			rows.WriteString("\n")
 		}
+		// Body width inside the framed panel so the hover wash spans the whole row.
+		rowWidth := m.reviewRowWidth()
 		for index := start; index < end; index++ {
 			img := m.reviewImages[index]
 			cursor := "  "
 			if index == m.reviewCursor {
-				cursor = m.styles.cursor.Render("▸ ")
+				cursor = "▸ "
 			}
 			box := "[ ]"
 			if img.Selected {
-				box = m.styles.checked.Render("[x]")
+				box = "[x]"
 			}
 			ref := truncateMiddle(img.Ref, refWidth)
-			fmt.Fprintf(&rows, "%s%s %s", cursor, box, ref)
+			line := fmt.Sprintf("%s%s %s", cursor, box, ref)
+			if index == m.reviewCursor {
+				// Full-width soft wash — Width pads trailing cells so the
+				// bar spans the whole row, not just the character run.
+				line = m.styles.hover.Width(rowWidth).Render(line)
+			} else if img.Selected {
+				line = fmt.Sprintf("%s%s %s", cursor, m.styles.checked.Render(box), m.styles.primary.Render(ref))
+			} else {
+				line = m.styles.primary.Render(line)
+			}
+			rows.WriteString(line)
 			if index < end-1 {
 				rows.WriteString("\n")
 			}
