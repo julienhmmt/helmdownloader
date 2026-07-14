@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
+	"github.com/julienhmmt/helmdownloader/pkg/bundle"
 	"github.com/julienhmmt/helmdownloader/pkg/config"
 	"github.com/julienhmmt/helmdownloader/pkg/images"
 	"github.com/julienhmmt/helmdownloader/pkg/log"
@@ -207,4 +208,33 @@ func TestByteLabel_WithoutTotal(t *testing.T) {
 	m := newModel(config.Default(), log.Discard())
 	label := m.byteLabel(1024, 0)
 	assert.Contains(t, label, "1.0 KiB")
+}
+
+func TestViewDone_ShowsVerifyAndImageCount(t *testing.T) {
+	m := newTestModel()
+	m.state = stateDone
+	m.bundlePath = "archives/argo-cd-1.0.0-bundle.tar.gz"
+	m.entries = make([]bundle.ImageEntry, 3)
+	out := m.render()
+	assert.Contains(t, out, "verify")
+	assert.Contains(t, out, "3 images")
+	assert.Contains(t, out, "load.sh")
+}
+
+func TestViewError_ShowsStepLabel(t *testing.T) {
+	m := newTestModel()
+	m.state = stateError
+	m.errStep = "prepare"
+	m.err = errors.New("helm pull failed")
+	out := m.render()
+	assert.Contains(t, out, "prepare")
+	assert.Contains(t, out, "helm pull failed")
+}
+
+func TestViewDownloading_ShowsEscCancel(t *testing.T) {
+	m := newTestModel()
+	m.state = stateDownloading
+	out := m.render()
+	assert.Contains(t, out, "esc")
+	assert.Contains(t, out, "cancel")
 }

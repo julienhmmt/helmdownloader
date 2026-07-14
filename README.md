@@ -52,8 +52,8 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 | **Versions** | `Enter` to select, `/` to filter, `Esc` to back | Pick a chart version |
 | **Review** | `Space` toggle, `a` add, `d` delete, `Enter` download, `Esc` back | Review auto-discovered images |
 | **Add Image** | `Enter` confirm, `Esc` cancel | Manually add an image reference |
-| **Download** | (waits) | Pulls images and builds the bundle |
-| **Done** | `n` new bundle, `q` quit | Shows the path to the created bundle |
+| **Download** | `Esc` cancel (back to review or partial results), `Ctrl+C` quit | Pulls images; partial successes are kept |
+| **Done** | `n` new bundle, `q` quit | Path, image counts, size, and next steps (`verify` / extract) |
 
 ### Sorting and Filtering Results
 

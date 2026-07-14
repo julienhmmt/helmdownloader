@@ -95,6 +95,9 @@ type model struct {
 	failures      []pipeline.ImageFailure
 	bundlePath    string
 	err           error
+	// errStep labels which async step failed (search, prepare, download, bundle)
+	// so the error screen can frame the message for the user.
+	errStep string
 }
 
 // newModel constructs the root model from cfg.

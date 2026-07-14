@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -57,13 +58,18 @@ func (m model) viewSearch() string {
 	return m.screen("HelmDownloader", "airgap chart bundler", body, "enter search · esc quit")
 }
 
-// viewBusy renders a centered spinner with a contextual label.
+// viewBusy renders a centered spinner with a contextual label and cancel help.
 func (m model) viewBusy() string {
 	label := "Searching ArtifactHub…"
 	if m.state == statePreparing {
 		label = fmt.Sprintf("Pulling and rendering %s %s…", m.selectedPkg.Name, m.selectedVersion)
 	}
-	return m.frame(fmt.Sprintf("%s %s", m.spinner.View(), label))
+	body := lipgloss.JoinVertical(lipgloss.Left,
+		fmt.Sprintf("%s %s", m.spinner.View(), label),
+		"",
+		m.renderHelp("esc cancel · ctrl+c quit"),
+	)
+	return m.frame(body)
 }
 
 // viewList renders a bubbles list with a styled footer. List screens are left
@@ -205,7 +211,7 @@ func (m model) viewDownloading() string {
 	}
 
 	body := lipgloss.JoinVertical(lipgloss.Left, lines...)
-	return m.screen("Downloading images", "", body, "saving image tarballs, please wait…")
+	return m.screen("Downloading images", "", body, "esc cancel · ctrl+c quit")
 }
 
 // miniBar renders a width-cell ASCII progress bar for (written/total).
@@ -243,8 +249,14 @@ func (m model) byteLabel(written, total int64) string {
 }
 
 // viewBundling renders the brief archive-assembly step.
+// Bundle ignores ctx, so Esc is a no-op; only ctrl+c aborts the whole process.
 func (m model) viewBundling() string {
-	return m.frame(fmt.Sprintf("%s Assembling bundle…", m.spinner.View()))
+	body := lipgloss.JoinVertical(lipgloss.Left,
+		fmt.Sprintf("%s Assembling bundle…", m.spinner.View()),
+		"",
+		m.renderHelp("ctrl+c quit"),
+	)
+	return m.frame(body)
 }
 
 // viewDownloadReview lists the images that failed to download and the reasons,
@@ -300,24 +312,54 @@ func errLine(err error) string {
 	return strings.ReplaceAll(err.Error(), "\n", " ")
 }
 
-// viewDone renders the success summary.
+// viewDone renders the success summary with image counts and next-step hints.
 func (m model) viewDone() string {
 	lines := []string{
 		m.styles.success.Render("✓ Bundle created"),
 		"",
 		m.bundlePath,
 	}
-	if len(m.failures) > 0 {
-		lines = append(lines, m.styles.errorMsg.Render(
-			fmt.Sprintf("%d image(s) failed and were skipped", len(m.failures))))
+	if sizeHint := bundleSizeHint(m.bundlePath); sizeHint != "" {
+		lines = append(lines, m.styles.muted.Render(sizeHint))
 	}
-	lines = append(lines, "", m.renderHelp("n new bundle · q quit"))
+	lines = append(lines, "")
+	summary := fmt.Sprintf("%d images", len(m.entries))
+	if len(m.failures) > 0 {
+		summary = fmt.Sprintf("%d images · %d failed (skipped)", len(m.entries), len(m.failures))
+		lines = append(lines, m.styles.errorMsg.Render(summary))
+	} else {
+		lines = append(lines, m.styles.muted.Render(summary))
+	}
+	lines = append(lines,
+		"",
+		m.styles.muted.Render("Next:"),
+		m.styles.muted.Render(fmt.Sprintf("  helmdownloader verify %s", m.bundlePath)),
+		m.styles.muted.Render(fmt.Sprintf("  tar xzf %s && ./load.sh", m.bundlePath)),
+		"",
+		m.renderHelp("n new bundle · q quit"),
+	)
 	return m.frame(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }
 
-// viewError renders the error screen.
+// bundleSizeHint returns a human-readable size for path, or empty if unavailable.
+func bundleSizeHint(path string) string {
+	if path == "" {
+		return ""
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return ""
+	}
+	return humanBytes(info.Size())
+}
+
+// viewError renders the error screen with an optional step label.
 func (m model) viewError() string {
-	lines := []string{m.styles.errorMsg.Render("Error"), ""}
+	title := "Error"
+	if m.errStep != "" {
+		title = fmt.Sprintf("Error · %s", m.errStep)
+	}
+	lines := []string{m.styles.errorMsg.Render(title), ""}
 	if m.err != nil {
 		lines = append(lines, m.err.Error())
 	}
