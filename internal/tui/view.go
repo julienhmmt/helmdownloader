@@ -69,10 +69,14 @@ func (m model) viewBusy() string {
 // viewList renders a bubbles list with a styled footer. List screens are left
 // unframed: the widget manages its own sizing and a border would fight it.
 // On the results screen, a sort/filter status line is shown above the footer.
+// Soft m.status feedback is rendered between body and help when set.
 func (m model) viewList(body string) string {
 	lines := []string{body}
 	if m.state == stateResults {
 		lines = append(lines, "", m.sortFilterStatus())
+	}
+	if m.status != "" {
+		lines = append(lines, "", m.styles.errorMsg.Render(m.status))
 	}
 	lines = append(lines, m.renderHelp(m.listHelp()))
 	return strings.Join(lines, "\n")

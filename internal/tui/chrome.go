@@ -21,13 +21,17 @@ func (m model) frame(body string) string {
 }
 
 // screen composes a titled panel: accent title, optional subtitle, a body, and
-// a dim help footer, all inside the bordered frame.
+// a dim help footer, all inside the bordered frame. When m.status is set it is
+// rendered above the help line as soft feedback (not stateError).
 func (m model) screen(title, subtitle, body, help string) string {
 	parts := []string{m.styles.title.Render(title)}
 	if subtitle != "" {
 		parts = append(parts, m.styles.subtitle.Render(subtitle))
 	}
 	parts = append(parts, "", body)
+	if m.status != "" {
+		parts = append(parts, "", m.styles.errorMsg.Render(m.status))
+	}
 	if help != "" {
 		parts = append(parts, "", m.renderHelp(help))
 	}
