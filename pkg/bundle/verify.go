@@ -57,10 +57,11 @@ func openBundleStream(path string) (io.Reader, func(), error) {
 }
 
 // Verify checks a bundle's integrity: every file listed in sha256sums.txt
-// is re-hashed and compared, and manifest.json is parsed to confirm it is
-// well-formed and its image entries have recorded digests. It does not
-// re-pull images or contact any registry. Returns nil if the bundle is
-// intact, or an error listing the first problem found.
+// (including load.sh) is re-hashed and compared, and manifest.json is parsed
+// to confirm it is well-formed, its tool field matches, and every image entry
+// has a non-empty recorded digest (not "" or "-"). It does not re-pull images
+// or contact any registry. Returns nil if the bundle is intact, or an error
+// listing the first problem found.
 //
 // The bundle is streamed in a single pass: each regular tar entry is hashed
 // on the fly (only its 64-byte hex digest is kept, never its contents), so
@@ -140,10 +141,22 @@ func Verify(path string) error {
 	if p.Tool != tool {
 		return fmt.Errorf("manifest.json tool %q != expected %q", p.Tool, tool)
 	}
+	for i, img := range p.Images {
+		if !digestRecorded(img.Digest) {
+			return fmt.Errorf("manifest.json images[%d] %q missing digest", i, img.Source)
+		}
+	}
 	if len(mismatched) > 0 {
 		return fmt.Errorf("bundle verification failed:\n  %s", strings.Join(mismatched, "\n  "))
 	}
 	return nil
+}
+
+// digestRecorded reports whether d is a usable image digest for offline verify.
+// Empty strings and the images.txt placeholder "-" are rejected.
+func digestRecorded(d string) bool {
+	d = strings.TrimSpace(d)
+	return d != "" && d != "-"
 }
 
 // hexSha256 returns the hex-encoded sha256 of data.
