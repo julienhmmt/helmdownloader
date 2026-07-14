@@ -59,12 +59,14 @@ type model struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	// bgIsDark selects light vs dark palette colors. For theme=auto it starts
-	// true (dark-friendly default) and is refined by BackgroundColorMsg.
-	// For theme=light|dark it is fixed at construction time.
+	// bgIsDark is the effective palette darkness (from the active theme).
 	bgIsDark bool
-	// bgKnown is true once the palette has been finalized (forced theme, or
-	// terminal background detection completed / skipped).
+	// detectedIsDark is the terminal background darkness from
+	// BackgroundColorMsg. Only auto uses this; named themes ignore it. Defaults
+	// to true (dark-friendly) until detection arrives.
+	detectedIsDark bool
+	// bgKnown is true once a named theme is active, or auto detection has
+	// answered (or the user forced a preview). Used to avoid thrashing styles.
 	bgKnown bool
 
 	state    state
@@ -134,9 +136,9 @@ func (m *model) clearStatus() { m.status = "" }
 func newModel(cfg config.Config, logger *log.Logger) model {
 	theme := config.NormalizeTheme(cfg.Theme)
 	// Auto starts dark-friendly until BackgroundColorMsg arrives.
-	preferredIsDark := true
+	detectedIsDark := true
 	forced := config.ThemeIsForced(theme)
-	styles := newStyles(theme, preferredIsDark)
+	styles := newStyles(theme, detectedIsDark)
 	bgIsDark := styles.palette.isDark
 
 	spin := spinner.New()
@@ -182,27 +184,28 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 
 	client, clientErr := artifacthub.New(cfg.ArtifactHubURL, cfg.HTTPSProxy, logger)
 	m := model{
-		cfg:           cfg,
-		client:        client,
-		pipeline:      pipeline.New(cfg, logger),
-		styles:        styles,
-		logger:        logger,
-		ctx:           ctx,
-		cancel:        cancel,
-		bgIsDark:      bgIsDark,
-		bgKnown:       forced,
-		state:         stateSearch,
-		spinner:       spin,
-		progress:      prog,
-		search:        search,
-		addInput:      add,
-		filter:        filter,
-		results:       resultsList,
-		versions:      versionsList,
-		activity:      make(chan tea.Msg, 16),
-		imageProgress: map[string]imageProgress{},
-		sortField:     sortStars,
-		sortDir:       sortDesc,
+		cfg:            cfg,
+		client:         client,
+		pipeline:       pipeline.New(cfg, logger),
+		styles:         styles,
+		logger:         logger,
+		ctx:            ctx,
+		cancel:         cancel,
+		bgIsDark:       bgIsDark,
+		detectedIsDark: detectedIsDark,
+		bgKnown:        forced,
+		state:          stateSearch,
+		spinner:        spin,
+		progress:       prog,
+		search:         search,
+		addInput:       add,
+		filter:         filter,
+		results:        resultsList,
+		versions:       versionsList,
+		activity:       make(chan tea.Msg, 16),
+		imageProgress:  map[string]imageProgress{},
+		sortField:      sortStars,
+		sortDir:        sortDesc,
 	}
 	if clientErr != nil {
 		m.state = stateError
@@ -212,11 +215,13 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 }
 
 // applyTheme rebuilds styles and list/spinner chrome from the active cfg.Theme.
-// preferredIsDark is only used when theme is auto (terminal detection).
-func (m *model) applyTheme(preferredIsDark bool) {
-	m.styles = newStyles(m.cfg.Theme, preferredIsDark)
+// Auto always follows m.detectedIsDark (terminal), never the last named theme.
+func (m *model) applyTheme() {
+	m.styles = newStyles(m.cfg.Theme, m.detectedIsDark)
 	m.bgIsDark = m.styles.palette.isDark
-	m.bgKnown = true
+	if config.ThemeIsForced(m.cfg.Theme) {
+		m.bgKnown = true
+	}
 	m.spinner.Style = lipgloss.NewStyle().Foreground(m.styles.palette.accent)
 	fill, empty := progressColors(m.styles.palette)
 	m.progress.FullColor = fill
@@ -255,23 +260,34 @@ func (m *model) previewThemeAtCursor() {
 		return
 	}
 	m.cfg.Theme = config.ThemeMenu[m.themeMenuCursor]
-	m.applyTheme(m.bgIsDark)
+	m.applyTheme()
 }
 
 // confirmThemeMenu keeps the currently previewed theme and returns to the prior
-// screen.
-func (m *model) confirmThemeMenu() {
+// screen. Selecting auto re-requests terminal background detection.
+func (m *model) confirmThemeMenu() tea.Cmd {
 	m.clearStatus()
 	m.setStatus("Theme: " + config.NormalizeTheme(m.cfg.Theme))
 	m.state = m.themeMenuReturn
+	if config.NormalizeTheme(m.cfg.Theme) == config.ThemeAuto {
+		m.bgKnown = false
+		return tea.RequestBackgroundColor
+	}
+	return nil
 }
 
 // cancelThemeMenu restores the theme active when the menu opened and returns.
-func (m *model) cancelThemeMenu() {
+// Restoring auto re-requests terminal background detection.
+func (m *model) cancelThemeMenu() tea.Cmd {
 	m.cfg.Theme = m.themeBeforeMenu
-	m.applyTheme(m.bgIsDark)
+	m.applyTheme()
 	m.clearStatus()
 	m.state = m.themeMenuReturn
+	if config.NormalizeTheme(m.cfg.Theme) == config.ThemeAuto {
+		m.bgKnown = false
+		return tea.RequestBackgroundColor
+	}
+	return nil
 }
 
 // Init starts the spinner and, for theme=auto, requests the terminal background.

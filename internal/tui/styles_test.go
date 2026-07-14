@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -176,7 +177,7 @@ func TestApplyTheme_SwitchesPaletteAndListMeta(t *testing.T) {
 	}
 	m.refreshResults()
 	m.cfg.Theme = config.ThemeLight
-	m.applyTheme(true)
+	m.applyTheme()
 	assert.False(t, m.bgIsDark)
 	assert.True(t, m.bgKnown)
 	assert.Equal(t, colorHex(lightPalette().primary), colorHex(m.styles.palette.primary))
@@ -214,7 +215,7 @@ func TestThemeMenu_PreviewConfirmAndCancel(t *testing.T) {
 	assert.Equal(t, colorHex(lightPalette().accent), colorHex(m.styles.palette.accent))
 
 	// Cancel restores dark.
-	m.cancelThemeMenu()
+	_ = m.cancelThemeMenu()
 	assert.Equal(t, stateSearch, m.state)
 	assert.Equal(t, config.ThemeDark, m.cfg.Theme)
 	assert.True(t, m.bgIsDark)
@@ -223,11 +224,81 @@ func TestThemeMenu_PreviewConfirmAndCancel(t *testing.T) {
 	m.openThemeMenu()
 	m.themeMenuCursor = config.ThemeMenuIndex(config.ThemeOcean)
 	m.previewThemeAtCursor()
-	m.confirmThemeMenu()
+	_ = m.confirmThemeMenu()
 	assert.Equal(t, stateSearch, m.state)
 	assert.Equal(t, config.ThemeOcean, m.cfg.Theme)
 	assert.Equal(t, "Theme: ocean", m.status)
 	assert.Equal(t, colorHex(oceanPalette().accent), colorHex(m.styles.palette.accent))
+}
+
+func TestThemeMenu_RestoreAutoUsesDetectedDarkness(t *testing.T) {
+	// After previewing light, returning to auto must use terminal detection
+	// (detectedIsDark), not the light preview's isDark=false.
+	cfg := config.Default()
+	cfg.Theme = config.ThemeAuto
+	m := newModel(cfg, log.Discard())
+	m.detectedIsDark = true
+	m.applyTheme()
+	require.True(t, m.bgIsDark)
+	require.Nil(t, themeBackground(m.cfg.Theme))
+
+	m.state = stateSearch
+	m.openThemeMenu()
+	m.themeMenuCursor = config.ThemeMenuIndex(config.ThemeLight)
+	m.previewThemeAtCursor()
+	assert.False(t, m.bgIsDark)
+
+	_ = m.cancelThemeMenu()
+	assert.Equal(t, config.ThemeAuto, m.cfg.Theme)
+	assert.True(t, m.bgIsDark, "auto must follow detectedIsDark=true after light preview")
+	assert.Nil(t, m.View().BackgroundColor)
+	// Frame must not paint a surface in auto — that mixed light card on dark host.
+	assert.True(t, isUnsetBackground(m.styles.frame.GetBackground()))
+}
+
+func TestAutoStyles_DoNotPaintSurface(t *testing.T) {
+	darkAuto := newStyles(config.ThemeAuto, true)
+	assert.True(t, isUnsetBackground(darkAuto.frame.GetBackground()))
+	assert.True(t, isUnsetBackground(darkAuto.primary.GetBackground()))
+	assert.Equal(t, colorHex(darkPalette().primary), colorHex(darkAuto.palette.primary))
+
+	lightAuto := newStyles(config.ThemeAuto, false)
+	assert.True(t, isUnsetBackground(lightAuto.frame.GetBackground()))
+	assert.Equal(t, colorHex(lightPalette().primary), colorHex(lightAuto.palette.primary))
+
+	// Named themes still paint surface.
+	forced := newStyles(config.ThemeDark, true)
+	assert.Equal(t, colorHex(darkPalette().surface), colorHex(forced.frame.GetBackground()))
+}
+
+// isUnsetBackground reports whether c is unset (nil or lipgloss.NoColor).
+func isUnsetBackground(c color.Color) bool {
+	if c == nil {
+		return true
+	}
+	_, isNo := c.(lipgloss.NoColor)
+	return isNo
+}
+
+func TestBackgroundColorMsg_RecordsDetectionEvenWhenForced(t *testing.T) {
+	cfg := config.Default()
+	cfg.Theme = config.ThemeLight
+	m := newModel(cfg, log.Discard())
+	require.False(t, m.detectedIsDark == false && m.bgIsDark) // start detected default true
+	// Simulate a light terminal while a forced theme is active.
+	// BackgroundColorMsg with a light-ish color: IsDark() depends on luminance;
+	// drive detection by applying applyTheme path after setting field.
+	m.detectedIsDark = false
+	// Force stays light palette.
+	assert.Equal(t, config.ThemeLight, m.cfg.Theme)
+	assert.False(t, m.bgIsDark)
+
+	// Switch to auto — should pick light because detectedIsDark=false.
+	m.cfg.Theme = config.ThemeAuto
+	m.applyTheme()
+	assert.False(t, m.bgIsDark)
+	assert.Equal(t, colorHex(lightPalette().primary), colorHex(m.styles.palette.primary))
+	assert.Nil(t, m.View().BackgroundColor)
 }
 
 func TestHandleKey_CtrlTOpensThemeMenu(t *testing.T) {

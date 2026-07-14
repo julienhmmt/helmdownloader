@@ -176,31 +176,44 @@ type styleSet struct {
 
 // newStyles builds the application's style set for the named theme.
 // preferredIsDark is used only when theme is auto.
+//
+// Auto must not paint a forced surface/background — only FG colors. Painting a
+// card surface while leaving the outer terminal to the host is what makes auto
+// look like a light/dark mix. Named themes still paint surface + termBG so they
+// stay readable when the host theme fights them.
 func newStyles(theme string, preferredIsDark bool) styleSet {
 	p := resolvePalette(theme, preferredIsDark)
+	paintSurface := config.ThemeIsForced(theme)
+	fg := func(c color.Color) lipgloss.Style {
+		s := lipgloss.NewStyle().Foreground(c)
+		if paintSurface {
+			s = s.Background(p.surface)
+		}
+		return s
+	}
+	frame := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(p.border).
+		Foreground(p.primary).
+		Padding(1, 2)
+	if paintSurface {
+		frame = frame.Background(p.surface)
+	}
 	return styleSet{
-		// Foreground + background on the frame so unstyled child text still
-		// inherits a readable ink-on-surface pair when the host terminal theme
-		// disagrees with the forced palette.
-		frame: lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(p.border).
-			Foreground(p.primary).
-			Background(p.surface).
-			Padding(1, 2),
-		title:     lipgloss.NewStyle().Bold(true).Foreground(p.accent).Background(p.surface),
-		subtitle:  lipgloss.NewStyle().Foreground(p.secondary).Background(p.surface),
-		primary:   lipgloss.NewStyle().Foreground(p.primary).Background(p.surface),
-		secondary: lipgloss.NewStyle().Foreground(p.secondary).Background(p.surface),
-		muted:     lipgloss.NewStyle().Foreground(p.muted).Background(p.surface),
-		faint:     lipgloss.NewStyle().Foreground(p.faint).Background(p.surface),
-		help:      lipgloss.NewStyle().Foreground(p.muted).Background(p.surface),
-		selected:  lipgloss.NewStyle().Foreground(p.accent).Bold(true).Background(p.surface),
-		cursor:    lipgloss.NewStyle().Foreground(p.accent).Bold(true).Background(p.surface),
+		frame:     frame,
+		title:     fg(p.accent).Bold(true),
+		subtitle:  fg(p.secondary),
+		primary:   fg(p.primary),
+		secondary: fg(p.secondary),
+		muted:     fg(p.muted),
+		faint:     fg(p.faint),
+		help:      fg(p.muted),
+		selected:  fg(p.accent).Bold(true),
+		cursor:    fg(p.accent).Bold(true),
 		hover:     lipgloss.NewStyle().Foreground(p.primary).Background(p.hover),
-		checked:   lipgloss.NewStyle().Foreground(p.good).Background(p.surface),
-		errorMsg:  lipgloss.NewStyle().Foreground(p.bad).Bold(true).Background(p.surface),
-		success:   lipgloss.NewStyle().Foreground(p.good).Bold(true).Background(p.surface),
+		checked:   fg(p.good),
+		errorMsg:  fg(p.bad).Bold(true),
+		success:   fg(p.good).Bold(true),
 		palette:   p,
 	}
 }

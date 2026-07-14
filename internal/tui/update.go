@@ -24,11 +24,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.progress.SetWidth(max(0, min(typed.Width-4, 60)))
 		return m, nil
 	case tea.BackgroundColorMsg:
-		// Only auto theme follows terminal detection; named themes are forced.
+		// Always record host darkness; only auto applies it immediately.
+		// (Named themes keep their fixed palette, but detection is stored so
+		// switching back to auto does not use a stale preview value.)
+		m.detectedIsDark = typed.IsDark()
 		if config.ThemeIsForced(m.cfg.Theme) {
 			return m, nil
 		}
-		m.applyTheme(typed.IsDark())
+		m.applyTheme()
+		m.bgKnown = true
 		return m, nil
 	case tea.KeyPressMsg:
 		return m.handleKey(typed)
@@ -208,11 +212,9 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m model) handleThemeMenuKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
-		m.cancelThemeMenu()
-		return m, nil
+		return m, m.cancelThemeMenu()
 	case "enter":
-		m.confirmThemeMenu()
-		return m, nil
+		return m, m.confirmThemeMenu()
 	case "up", "k":
 		if m.themeMenuCursor > 0 {
 			m.themeMenuCursor--
