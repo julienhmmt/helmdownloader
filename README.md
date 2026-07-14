@@ -318,7 +318,7 @@ You can always manually add missing images using the `a` key on the Review scree
 
 ## Requirements
 
-- [Go](https://go.dev) 1.26+ (to build)
+- [Go](https://go.dev) 1.26.5+ (to build; `toolchain go1.26.5` in `go.mod` for stdlib CVE fixes)
 - [Helm](https://helm.sh) 3.x (runtime dependency, must be in `$PATH`)
 - Network access to ArtifactHub and the chart/image registries
 

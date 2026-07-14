@@ -70,14 +70,26 @@ func TestVersionsMsg_EmptySetsStatus(t *testing.T) {
 }
 
 func TestHandleAddImageKey_InvalidRefSetsStatus(t *testing.T) {
-	m := newTestModel()
-	m.state = stateAddImage
-	m.addInput.SetValue("not a ref")
-	got, _ := m.handleAddImageKey(keyPress("enter"))
-	m2 := got.(model)
-	assert.Equal(t, stateAddImage, m2.state)
-	assert.Contains(t, m2.status, "Invalid image reference")
-	assert.Empty(t, m2.reviewImages)
+	tests := []struct {
+		name string
+		ref  string
+	}{
+		{name: "spaces", ref: "not a ref"},
+		{name: "unparseable", ref: "!!!invalid:ref"},
+		{name: "template", ref: "image:{{ .Values.tag }}"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := newTestModel()
+			m.state = stateAddImage
+			m.addInput.SetValue(tt.ref)
+			got, _ := m.handleAddImageKey(keyPress("enter"))
+			m2 := got.(model)
+			assert.Equal(t, stateAddImage, m2.state)
+			assert.Contains(t, m2.status, "Invalid image reference")
+			assert.Empty(t, m2.reviewImages)
+		})
+	}
 }
 
 func TestHandleAddImageKey_ValidRefAppendsAndClearsStatus(t *testing.T) {
