@@ -98,7 +98,7 @@ The status line reports the active `sort:`, `filter:`, and the count of charts s
 | `-min-free-mb` | `500` | Minimum free disk space (MiB) required on the work dir before downloading; `0` disables the check |
 | `-concurrency` | `4` | Maximum number of images downloaded in parallel |
 | `-retries` | `2` | Retry attempts per failed image pull (exponential backoff) |
-| `-proxy` | (from config) | Proxy URL for network requests (e.g. `http://proxy.domain.local:3128`) |
+| `-proxy` | (from config) | Proxy URL for ArtifactHub search, helm chart pulls, and registry image pulls (e.g. `http://proxy.domain.local:3128`) |
 | `-v` | `false` | Enable verbose logging (shortcut for `--log-level=debug`) |
 | `-log-level` | `info` | Set log level: `silent`, `info`, or `debug` |
 | `-log-file` | `helmdownloader.log` | Path for log output |
@@ -145,6 +145,8 @@ Use `-export-images` and `-import-images` to review the discovered image list wi
 ./helmdownloader -import-images images.json
 ```
 
+Import rejects invalid image references with a non-zero error before download so a bad edit fails closed at load time rather than after pull retries.
+
 The JSON format is an array of entries:
 
 ```json
@@ -185,7 +187,7 @@ Prints the tool identity (`helmdownloader <version>`). Release builds inject the
 ./helmdownloader verify argo-cd-1.0.0-bundle.tar.gz
 ```
 
-Checks bundle integrity without contacting any registry: re-hashes every file against `sha256sums.txt` and confirms `manifest.json` is well-formed. Exits 0 if intact, 1 on any mismatch, 2 on bad usage. Use this on the airgapped side after transfer, before running `load.sh`.
+Checks bundle integrity without contacting any registry: re-hashes every file listed in `sha256sums.txt` (including `load.sh`) and confirms `manifest.json` is well-formed with a non-empty digest for every image. Exits 0 if intact, 1 on any mismatch, 2 on bad usage. Use this on the airgapped side after transfer, before running `load.sh`.
 
 #### diff
 
@@ -208,7 +210,7 @@ images/
 images.txt                # manifest: source_ref  dest_ref  tar_name  digest
 manifest.json             # provenance: tool, toolVersion, chart, codec, images + digests
 sbom.spdx.json            # SPDX 2.3 SBOM: chart + images with pinned digests
-sha256sums.txt            # sha256 of every bundled file (sha256sum -c format)
+sha256sums.txt            # sha256 of every payload file including load.sh (sha256sum -c format)
 load.sh                   # verifies checksums, then loads and pushes every image
 ```
 
@@ -225,7 +227,7 @@ ENGINE=podman ./load.sh    # use podman instead
 DRY_RUN=1 ./load.sh        # print load/push commands without running them
 ```
 
-`load.sh` verifies `sha256sums.txt` before touching the registry, skips loading any image already present locally (idempotent re-runs), and honors `DRY_RUN=1` for a no-op preview.
+`load.sh` verifies `sha256sums.txt` (which covers all payload files including `load.sh` itself) before touching the registry, aborts if neither `sha256sum` nor `shasum` is available, skips loading any image already present locally (idempotent re-runs), and honors `DRY_RUN=1` for a no-op preview.
 
 ## Architecture
 

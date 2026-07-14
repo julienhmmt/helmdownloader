@@ -56,16 +56,36 @@ func openBundleStream(path string) (io.Reader, func(), error) {
 	return stream, cln, nil
 }
 
+// maxMetadataFileSize caps sha256sums.txt / manifest.json reads so a hostile
+// archive cannot exhaust memory during verify/diff. Real bundles stay well below.
+// Mutable var so tests can lower the limit without allocating multi-MiB fixtures.
+var maxMetadataFileSize int64 = 4 << 20 // 4 MiB
+
+// readCapped reads from r until EOF or limit+1 bytes. Returns an error if the
+// entry exceeds limit so callers can fail closed without buffering unbounded data.
+func readCapped(r io.Reader, limit int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("metadata entry exceeds %d bytes", limit)
+	}
+	return data, nil
+}
+
 // Verify checks a bundle's integrity: every file listed in sha256sums.txt
-// is re-hashed and compared, and manifest.json is parsed to confirm it is
-// well-formed and its image entries have recorded digests. It does not
-// re-pull images or contact any registry. Returns nil if the bundle is
-// intact, or an error listing the first problem found.
+// (including load.sh) is re-hashed and compared, and manifest.json is parsed
+// to confirm it is well-formed, its tool field matches, and every image entry
+// has a non-empty recorded digest (not "" or "-"). It does not re-pull images
+// or contact any registry. Returns nil if the bundle is intact, or an error
+// listing the first problem found.
 //
 // The bundle is streamed in a single pass: each regular tar entry is hashed
 // on the fly (only its 64-byte hex digest is kept, never its contents), so
 // memory stays bounded regardless of bundle size. sha256sums.txt and
-// manifest.json are small metadata files held in memory for parsing.
+// manifest.json are small metadata files held in memory for parsing, capped
+// by maxMetadataFileSize.
 func Verify(path string) error {
 	stream, cln, err := openBundleStream(path)
 	if err != nil {
@@ -90,14 +110,14 @@ func Verify(path string) error {
 		}
 		switch hdr.Name {
 		case "sha256sums.txt":
-			data, err := io.ReadAll(tr)
+			data, err := readCapped(tr, maxMetadataFileSize)
 			if err != nil {
 				return fmt.Errorf("read sha256sums.txt: %w", err)
 			}
 			sumsBytes = data
 			digests[hdr.Name] = hexSha256(data)
 		case "manifest.json":
-			data, err := io.ReadAll(tr)
+			data, err := readCapped(tr, maxMetadataFileSize)
 			if err != nil {
 				return fmt.Errorf("read manifest.json: %w", err)
 			}
@@ -140,10 +160,22 @@ func Verify(path string) error {
 	if p.Tool != tool {
 		return fmt.Errorf("manifest.json tool %q != expected %q", p.Tool, tool)
 	}
+	for i, img := range p.Images {
+		if !digestRecorded(img.Digest) {
+			return fmt.Errorf("manifest.json images[%d] %q missing digest", i, img.Source)
+		}
+	}
 	if len(mismatched) > 0 {
 		return fmt.Errorf("bundle verification failed:\n  %s", strings.Join(mismatched, "\n  "))
 	}
 	return nil
+}
+
+// digestRecorded reports whether d is a usable image digest for offline verify.
+// Empty strings and the images.txt placeholder "-" are rejected.
+func digestRecorded(d string) bool {
+	d = strings.TrimSpace(d)
+	return d != "" && d != "-"
 }
 
 // hexSha256 returns the hex-encoded sha256 of data.
@@ -219,7 +251,7 @@ func readManifestImages(path string) (map[string]string, error) {
 		if hdr.Typeflag != tar.TypeReg || hdr.Name != "manifest.json" {
 			continue
 		}
-		prov, err := io.ReadAll(tr)
+		prov, err := readCapped(tr, maxMetadataFileSize)
 		if err != nil {
 			return nil, fmt.Errorf("read manifest.json: %w", err)
 		}
