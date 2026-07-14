@@ -14,6 +14,7 @@ import (
 	"github.com/julienhmmt/helmdownloader/pkg/config"
 	"github.com/julienhmmt/helmdownloader/pkg/helm"
 	"github.com/julienhmmt/helmdownloader/pkg/log"
+	"github.com/julienhmmt/helmdownloader/pkg/version"
 )
 
 // stringSlice is a flag.Value that accumulates repeated flag occurrences, so
@@ -35,6 +36,9 @@ func main() {
 			return
 		case "diff":
 			runDiff(os.Args[2:])
+			return
+		case "version", "-version", "--version":
+			fmt.Println(version.String())
 			return
 		}
 	}

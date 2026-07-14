@@ -173,6 +173,14 @@ DOCKER_CONFIG=/path/to/creds ./helmdownloader -registry-auth
 
 ### Subcommands
 
+#### version
+
+```bash
+./helmdownloader version
+```
+
+Prints the tool identity (`helmdownloader <version>`). Release builds inject the tag via ldflags; development builds report `dev` (or `git describe` when built with `make build`).
+
 #### verify
 
 ```bash
@@ -200,7 +208,7 @@ images/
   <image1>.tar            # retagged image tarball
   <image2>.tar
 images.txt                # manifest: source_ref  dest_ref  tar_name  digest
-manifest.json             # provenance: tool, chart, codec, images + digests
+manifest.json             # provenance: tool, toolVersion, chart, codec, images + digests
 sbom.spdx.json            # SPDX 2.3 SBOM: chart + images with pinned digests
 sha256sums.txt            # sha256 of every payload file including load.sh (sha256sum -c format)
 load.sh                   # verifies checksums, then loads and pushes every image
