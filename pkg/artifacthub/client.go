@@ -61,12 +61,24 @@ type Client struct {
 }
 
 // New returns a Client targeting baseURL (e.g. "https://artifacthub.io").
-func New(baseURL string, logger *log.Logger) *Client {
+// When proxy is non-empty it is used as the HTTP(S) proxy for all requests
+// (same config path as helm and registry pulls).
+func New(baseURL, proxy string, logger *log.Logger) (*Client, error) {
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	if proxy != "" {
+		u, err := url.Parse(proxy)
+		if err != nil {
+			return nil, fmt.Errorf("parse proxy URL %q: %w", proxy, err)
+		}
+		tr := http.DefaultTransport.(*http.Transport).Clone()
+		tr.Proxy = http.ProxyURL(u)
+		httpClient.Transport = tr
+	}
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
-		http:    &http.Client{Timeout: 30 * time.Second},
+		http:    httpClient,
 		logger:  logger,
-	}
+	}, nil
 }
 
 // Search returns Helm charts matching query, capped at limit results.

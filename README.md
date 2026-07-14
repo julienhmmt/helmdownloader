@@ -98,7 +98,7 @@ The status line reports the active `sort:`, `filter:`, and the count of charts s
 | `-min-free-mb` | `500` | Minimum free disk space (MiB) required on the work dir before downloading; `0` disables the check |
 | `-concurrency` | `4` | Maximum number of images downloaded in parallel |
 | `-retries` | `2` | Retry attempts per failed image pull (exponential backoff) |
-| `-proxy` | (from config) | Proxy URL for network requests (e.g. `http://proxy.domain.local:3128`) |
+| `-proxy` | (from config) | Proxy URL for ArtifactHub search, helm chart pulls, and registry image pulls (e.g. `http://proxy.domain.local:3128`) |
 | `-v` | `false` | Enable verbose logging (shortcut for `--log-level=debug`) |
 | `-log-level` | `info` | Set log level: `silent`, `info`, or `debug` |
 | `-log-file` | `helmdownloader.log` | Path for log output |
