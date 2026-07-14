@@ -1,16 +1,23 @@
 # HelmDownloader
 
-A TUI (Terminal User Interface) application (v0.2.0) for downloading Helm charts and their container images, then bundling them into a single, integrity-checked archive for airgapped infrastructure.
+A TUI (Terminal User Interface) application (**v0.3.0**) for downloading Helm charts and their container images, then bundling them into a single, integrity-checked archive for airgapped infrastructure.
+
+Run `helmdownloader version` to print the binary identity (release builds inject the tag; `make build` uses `git describe`).
 
 ## Features
 
 - **Search**: Search for Helm charts on [ArtifactHub](https://artifacthub.io)
 - **Sort & filter**: Sort results by stars, name, or last-updated date, and filter by author or publishing company
-- **Select**: Choose Helm charts and their versions
+- **Select**: Choose Helm charts and their versions (official / deprecated badges; stars, repo, publisher, app on each row)
 - **Auto-discover**: Automatically extract all container image references from a rendered chart and its `values.yaml`, including the split `registry`/`repository`/`tag`/`digest` form used by many charts
-- **Review**: Manually add, remove, or toggle individual images before downloading
-- **Download**: Daemonless image pulling using [go-containerregistry](https://github.com/google/go-containerregistry) (no Docker required)
-- **Archive**: Create a single compressed bundle per chart containing the chart, values, and all retagged image tarballs
+- **Review**: Manually add, remove, or toggle individual images before downloading (windowed list for large charts; image refs validated on add)
+- **Download**: Daemonless image pulling using [go-containerregistry](https://github.com/google/go-containerregistry) (no Docker required); per-image progress; Esc cancels busy work while keeping partial successes
+- **Archive**: Create a single compressed bundle per chart (`.tar.gz` or `.tar.zst`) with chart, values, retagged image tarballs, pinned digests, SPDX SBOM, checksums, and `load.sh`
+- **Integrity**: `verify` and `diff` subcommands; `load.sh` checks `sha256sums.txt` (including itself) before load/push
+- **Security review**: Export the discovered image list as JSON, hand it to a security team, re-import the approved set
+- **Private registries**: Authenticated pulls via the default Docker keychain (`-registry-auth`)
+- **Themes**: `auto`, `light`, `dark`, `high-contrast`, `ocean`, `matrix` — set with `-theme` or pick live with `Ctrl+T`
+- **Resumable**: `-resume` reuses tarballs in a persistent work dir when content-hash and registry digest sidecars match
 
 ## Prerequisites
 
@@ -93,7 +100,7 @@ The status line reports the active `sort:`, `filter:`, and the count of charts s
 | `-platform` | (from config) | Target platform for images, e.g. `linux/amd64` |
 | `-output` | (from config) | Output directory for bundles (default: archives) |
 | `-work-dir` | (from config) | Work directory for intermediate files (charts, images). If empty, a temporary directory is used |
-| `-resume` | `false` | Reuse image tarballs already present in a persistent work dir instead of re-pulling (use with `-work-dir`). Reuse requires matching content-hash (`.sha256`) and registry digest (`.digest`) sidecars written on a successful pull; older work dirs without content hashes re-pull safely |
+| `-resume` | `false` | Reuse image tarballs already present in a persistent work dir instead of re-pulling (use with `-work-dir`). Reuse requires matching content-hash (`.sha256`) and registry digest (`.digest`) sidecars from a prior successful pull; truncated/corrupt tarballs and older work dirs without content hashes re-pull safely |
 | `-registry-auth` | `false` | Enable authenticated pulls from private registries using the default Docker keychain |
 | `-compression` | `gzip` | Bundle compression codec: `gzip` (`.tar.gz`) or `zstd` (`.tar.zst`, smaller) |
 | `-min-free-mb` | `500` | Minimum free disk space (MiB) required on the work dir before downloading; `0` disables the check |
@@ -273,7 +280,8 @@ DRY_RUN=1 ./load.sh        # print load/push commands without running them
               └──────────────┬──────────────┘
                              │
               ┌──────────────▼──────────────┐
-              │  bundle as .tar.gz          │
+              │  bundle as .tar.gz / .tar.zst│
+              │  + SBOM + checksums + load.sh│
               └─────────────────────────────┘
 ```
 
@@ -282,14 +290,15 @@ DRY_RUN=1 ./load.sh        # print load/push commands without running them
 | Package | Responsibility |
 | ------- | -------------- |
 | `pkg/config` | YAML config loading with defaults |
-| `pkg/artifacthub` | ArtifactHub REST API client |
-| `pkg/helm` | Shell-outs to `helm` binary (pull, template, show values) |
-| `pkg/images` | Parse rendered YAML manifests to extract `image:` references; retag with registry prefix |
-| `pkg/registry` | Daemonless image pull and save via `go-containerregistry` |
-| `pkg/bundle` | Assemble chart + values + image tarballs into a single `.tar.gz` |
-| `pkg/pipeline` | Orchestrate the full flow with progress callbacks |
-| `pkg/log` | Leveled logger (silent/info/debug) writing to the log file |
-| `internal/tui` | Bubble Tea terminal UI with all screens |
+| `pkg/artifacthub` | ArtifactHub REST API client (search, versions; respects proxy) |
+| `pkg/helm` | Shell-outs to `helm` binary (pull, template, show values; hermetic repo/cache per work dir) |
+| `pkg/images` | Parse rendered YAML manifests to extract `image:` references; retag with registry prefix; validate refs |
+| `pkg/registry` | Daemonless image pull and save via `go-containerregistry` (byte progress, content-hash sidecars) |
+| `pkg/bundle` | Assemble chart + values + image tarballs; `load.sh`, `sha256sums.txt`, `manifest.json`, SPDX SBOM; verify/diff |
+| `pkg/pipeline` | Orchestrate Prepare → Download → Bundle with retries, concurrency, disk preflight, resume |
+| `pkg/log` | Leveled logger (silent/info/debug) writing to the log file (mode 0600) |
+| `pkg/version` | Build-time identity injected via ldflags / `git describe` |
+| `internal/tui` | Bubble Tea terminal UI: screens, themes, progress, empty states |
 
 ## Image Discovery
 
