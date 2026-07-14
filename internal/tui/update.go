@@ -49,7 +49,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.prepared = typed.prepared
 		m.reviewImages = typed.prepared.Images
 		m.reviewCursor = 0
-		m.clearStatus()
+		m.reviewOffset = 0
 		m.state = stateReview
 		if err := exportImages(m.cfg.ExportImages, m.reviewImages); err != nil {
 			m.err = err
@@ -299,6 +299,24 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.reviewCursor < len(m.reviewImages)-1 {
 			m.reviewCursor++
 		}
+	case "pgup", "ctrl+u":
+		_, visible := m.reviewViewport()
+		m.reviewCursor -= visible
+		if m.reviewCursor < 0 {
+			m.reviewCursor = 0
+		}
+	case "pgdown", "ctrl+d":
+		_, visible := m.reviewViewport()
+		m.reviewCursor += visible
+		if n := len(m.reviewImages); n > 0 && m.reviewCursor >= n {
+			m.reviewCursor = n - 1
+		}
+	case "g", "home":
+		m.reviewCursor = 0
+	case "G", "end":
+		if n := len(m.reviewImages); n > 0 {
+			m.reviewCursor = n - 1
+		}
 	case "space":
 		if len(m.reviewImages) > 0 {
 			m.reviewImages[m.reviewCursor].Selected = !m.reviewImages[m.reviewCursor].Selected
@@ -347,6 +365,7 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.downCurrent, m.downTotal = 0, len(refs)
 		return m, tea.Batch(m.spinner.Tick, downloadCmd(m.ctx, m.pipeline, m.prepared, refs, m.activity))
 	}
+	m.ensureReviewCursorVisible()
 	return m, nil
 }
 
@@ -384,6 +403,7 @@ func (m model) handleAddImageKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.addInput.Blur()
 			m.clearStatus()
 			m.state = stateReview
+			m.ensureReviewCursorVisible()
 			return m, nil
 		}
 		if !looksLikeImageRef(ref) {
@@ -392,14 +412,17 @@ func (m model) handleAddImageKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.reviewImages = append(m.reviewImages, images.Image{Ref: ref, Selected: true})
+		m.reviewCursor = len(m.reviewImages) - 1
 		m.addInput.Blur()
 		m.clearStatus()
 		m.state = stateReview
+		m.ensureReviewCursorVisible()
 		return m, nil
 	case "esc":
 		m.addInput.Blur()
 		m.clearStatus()
 		m.state = stateReview
+		m.ensureReviewCursorVisible()
 		return m, nil
 	}
 	return m.updateComponents(msg)

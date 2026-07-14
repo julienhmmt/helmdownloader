@@ -137,7 +137,8 @@ func (m model) viewFilterInput() string {
 		"enter apply · tab cycle · esc cancel")
 }
 
-// viewReview renders the image checklist inside the app frame.
+// viewReview renders the image checklist inside the app frame. Only a window
+// of rows is drawn so large charts remain navigable on short terminals.
 func (m model) viewReview() string {
 	title := fmt.Sprintf("Images · %s %s", m.selectedPkg.Name, m.selectedVersion)
 	subtitle := fmt.Sprintf("%d selected of %d", m.countSelected(), len(m.reviewImages))
@@ -145,19 +146,36 @@ func (m model) viewReview() string {
 	var rows strings.Builder
 	if len(m.reviewImages) == 0 {
 		rows.WriteString(m.styles.muted.Render("No images discovered. Press 'a' to add one manually."))
-	}
-	for index, img := range m.reviewImages {
-		cursor := "  "
-		if index == m.reviewCursor {
-			cursor = m.styles.cursor.Render("▸ ")
+	} else {
+		start, visible := m.reviewViewport()
+		end := start + visible
+		if end > len(m.reviewImages) {
+			end = len(m.reviewImages)
 		}
-		box := "[ ]"
-		if img.Selected {
-			box = m.styles.checked.Render("[x]")
-		}
-		fmt.Fprintf(&rows, "%s%s %s", cursor, box, img.Ref)
-		if index < len(m.reviewImages)-1 {
+		refWidth := m.reviewInnerWidth()
+		if start > 0 {
+			rows.WriteString(m.styles.faint.Render(fmt.Sprintf("↑ %d more", start)))
 			rows.WriteString("\n")
+		}
+		for index := start; index < end; index++ {
+			img := m.reviewImages[index]
+			cursor := "  "
+			if index == m.reviewCursor {
+				cursor = m.styles.cursor.Render("▸ ")
+			}
+			box := "[ ]"
+			if img.Selected {
+				box = m.styles.checked.Render("[x]")
+			}
+			ref := truncateMiddle(img.Ref, refWidth)
+			fmt.Fprintf(&rows, "%s%s %s", cursor, box, ref)
+			if index < end-1 {
+				rows.WriteString("\n")
+			}
+		}
+		if end < len(m.reviewImages) {
+			rows.WriteString("\n")
+			rows.WriteString(m.styles.faint.Render(fmt.Sprintf("↓ %d more", len(m.reviewImages)-end)))
 		}
 	}
 
@@ -165,7 +183,7 @@ func (m model) viewReview() string {
 		m.cfg.RegistryPrefix, m.cfg.Platform, m.cfg.OutputDir))
 	body := lipgloss.JoinVertical(lipgloss.Left, rows.String(), "", meta)
 	return m.screen(title, subtitle, body,
-		"space toggle · a add · d delete · enter download · esc back")
+		"space toggle · a add · d delete · j/k move · pgup/pgdn page · g/G jump · enter download · esc back")
 }
 
 // viewAddImage renders the manual image entry prompt.
