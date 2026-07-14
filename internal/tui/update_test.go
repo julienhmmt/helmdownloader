@@ -28,7 +28,7 @@ func newResultsModel() model {
 		{Name: "nginx", Stars: 150, Author: "bitnami", Organization: "bitnami",
 			OrganizationDisplayName: "Bitnami", LastUpdated: 200},
 	}
-	m.results.SetItems(packagesToItems(m.visiblePackages()))
+	m.results.SetItems(packagesToItems(m.visiblePackages(), m.styles.palette))
 	return m
 }
 

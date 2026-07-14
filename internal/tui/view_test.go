@@ -85,10 +85,11 @@ func TestViewReview_HoverSpansFullRow(t *testing.T) {
 }
 
 func TestHoverDelegate_SelectedTitleUsesListWidth(t *testing.T) {
+	p := resolvePalette(true)
 	items := packagesToItems([]artifacthub.Package{
 		{Name: "short", Description: "d", Stars: 1},
-	})
-	l := list.New(items, newHoverDelegate(), 80, 20)
+	}, p)
+	l := list.New(items, newHoverDelegate(p), 80, 20)
 	l.Title = "Charts"
 	l.SetShowHelp(false)
 	// Rendering must succeed and the selected row background is width-bound
@@ -107,7 +108,7 @@ func TestViewResultsShowsSortFilterStatus(t *testing.T) {
 	m.sortDir = sortDesc
 	m.filterField = filterAuthor
 	m.filterValue = "bit"
-	m.results.SetItems(packagesToItems(m.visiblePackages()))
+	m.results.SetItems(packagesToItems(m.visiblePackages(), m.styles.palette))
 
 	out := m.render()
 	assert.Contains(t, out, "sort: stars↓")
@@ -125,7 +126,7 @@ func TestViewResultsShowsFilterOff(t *testing.T) {
 	m.sortField = sortName
 	m.sortDir = sortAsc
 	m.filterField = filterNone
-	m.results.SetItems(packagesToItems(m.visiblePackages()))
+	m.results.SetItems(packagesToItems(m.visiblePackages(), m.styles.palette))
 
 	out := m.render()
 	assert.Contains(t, out, "sort: name↑")

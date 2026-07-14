@@ -6,11 +6,12 @@ import (
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
 )
 
-// packagesToItems wraps packages as list items.
-func packagesToItems(packages []artifacthub.Package) []list.Item {
+// packagesToItems wraps packages as list items using the active palette for
+// meta-line styling.
+func packagesToItems(packages []artifacthub.Package, p palette) []list.Item {
 	items := make([]list.Item, 0, len(packages))
 	for _, pkg := range packages {
-		items = append(items, packageItem{pkg: pkg})
+		items = append(items, packageItem{pkg: pkg, palette: p})
 	}
 	return items
 }

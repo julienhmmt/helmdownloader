@@ -2,10 +2,19 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
+)
+
+// Supported TUI theme names.
+const (
+	ThemeAuto  = "auto"
+	ThemeLight = "light"
+	ThemeDark  = "dark"
 )
 
 // Config holds all tunable settings for the application.
@@ -51,6 +60,10 @@ type Config struct {
 	// MinFreeDiskMB is the minimum free space, in MiB, required on the work
 	// directory's filesystem before a download starts. 0 disables the check.
 	MinFreeDiskMB int `yaml:"min_free_disk_mb"`
+	// Theme selects the TUI palette: "auto" (default, follow the terminal),
+	// "light", or "dark". Forced light/dark also set a matching terminal
+	// background so adaptive text remains readable.
+	Theme string `yaml:"theme"`
 	// Verbose enables detailed logging to a file.
 	Verbose bool `yaml:"verbose"`
 	// LogFile is the path where verbose output is written.
@@ -85,7 +98,27 @@ func Default() Config {
 		RegistryPrefix: "",
 		Retries:        2,
 		SearchLimit:    20,
+		Theme:          ThemeAuto,
 	}
+}
+
+// ValidateTheme reports whether name is a supported TUI theme.
+func ValidateTheme(name string) error {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "", ThemeAuto, ThemeLight, ThemeDark:
+		return nil
+	default:
+		return fmt.Errorf("unsupported theme %q (want auto, light, or dark)", name)
+	}
+}
+
+// NormalizeTheme returns a canonical theme name. Empty becomes auto.
+func NormalizeTheme(name string) string {
+	n := strings.ToLower(strings.TrimSpace(name))
+	if n == "" {
+		return ThemeAuto
+	}
+	return n
 }
 
 // Load reads configuration from path, falling back to defaults for any

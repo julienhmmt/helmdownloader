@@ -14,6 +14,11 @@ import (
 func (m model) View() tea.View {
 	v := tea.NewView(m.render())
 	v.AltScreen = true
+	// Forced light/dark paint a matching terminal background so the palette
+	// stays readable when the host terminal theme differs.
+	if bg := themeBackground(m.cfg.Theme); bg != nil {
+		v.BackgroundColor = bg
+	}
 	return v
 }
 

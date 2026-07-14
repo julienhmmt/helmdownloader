@@ -104,6 +104,7 @@ The status line reports the active `sort:`, `filter:`, and the count of charts s
 | `-log-file` | `helmdownloader.log` | Path for log output |
 | `-export-images` | (none) | Write the discovered image list (JSON) to this path after rendering, for security review |
 | `-import-images` | (none) | Read an approved image list (JSON) from this path at download time, overriding the discovered set |
+| `-theme` | `auto` | TUI theme: `auto` (follow the terminal background), `light`, or `dark`. Forced light/dark also set a matching terminal background |
 
 ### Configuration File
 
@@ -123,6 +124,7 @@ https_proxy: "http://proxy.domain.local:3128"
 helm_bin: "helm"
 artifacthub_url: "https://artifacthub.io"
 search_limit: 20
+theme: "auto"                # auto | light | dark — force a TUI palette
 verbose: true
 log_level: "debug"
 log_file: "helmdownloader.log"

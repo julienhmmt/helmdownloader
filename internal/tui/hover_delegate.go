@@ -21,9 +21,9 @@ type hoverDelegate struct {
 }
 
 // newHoverDelegate builds the delegate used by the chart and version lists.
-func newHoverDelegate() hoverDelegate {
+func newHoverDelegate(p palette) hoverDelegate {
 	return hoverDelegate{
-		styles:  chartDelegateStyles(),
+		styles:  chartDelegateStyles(p),
 		height:  2,
 		spacing: 1,
 	}

@@ -62,6 +62,7 @@ func main() {
 	logFile := flag.String("log-file", "helmdownloader.log", "path for log output")
 	exportImages := flag.String("export-images", "", "write the discovered image list (JSON) to this path after rendering, for security review")
 	importImages := flag.String("import-images", "", "read an approved image list (JSON) from this path at download time, overriding the discovered set")
+	theme := flag.String("theme", "", "TUI theme: auto (default, follow terminal), light, or dark")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)
@@ -133,8 +134,16 @@ func main() {
 	if *importImages != "" {
 		cfg.ImportImages = *importImages
 	}
+	if *theme != "" {
+		cfg.Theme = *theme
+	}
+	cfg.Theme = config.NormalizeTheme(cfg.Theme)
 
 	if err := bundle.ValidateCompression(cfg.Compression); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	if err := config.ValidateTheme(cfg.Theme); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
