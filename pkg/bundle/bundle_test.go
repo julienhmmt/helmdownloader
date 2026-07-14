@@ -89,13 +89,14 @@ func TestCreate_WritesAllEntries(t *testing.T) {
 	// A known digest is emitted as a comment above its load_and_push line.
 	assert.Contains(t, contents["load.sh"], "# sha256:aaa")
 
-	// sha256sums.txt covers chart, values, and image tars in sha256sum -c format.
+	// sha256sums.txt covers every payload file including load.sh (not itself).
 	sums := contents["sha256sums.txt"]
 	require.Contains(t, contents, "sha256sums.txt")
 	assert.Contains(t, sums, "  argo-cd-1.0.0.tgz")
 	assert.Contains(t, sums, "  values.yaml")
 	assert.Contains(t, sums, "  images/img1.tar")
 	assert.Contains(t, sums, "  images.txt")
+	assert.Contains(t, sums, "  load.sh")
 	// Checksums must match the actual bundled bytes.
 	for line := range strings.SplitSeq(strings.TrimSpace(sums), "\n") {
 		parts := strings.SplitN(line, "  ", 2)
@@ -103,8 +104,9 @@ func TestCreate_WritesAllEntries(t *testing.T) {
 		sum := sha256.Sum256([]byte(contents[parts[1]]))
 		assert.Equal(t, hex.EncodeToString(sum[:]), parts[0], "checksum mismatch for %s", parts[1])
 	}
-	// load.sh verifies before pushing.
+	// load.sh verifies before pushing and fails closed without a checksum tool.
 	assert.Contains(t, contents["load.sh"], "sha256sums.txt")
+	assert.Contains(t, contents["load.sh"], "refuse to load without integrity check")
 
 	// manifest.json provenance is present and references the images.
 	require.Contains(t, contents, "manifest.json")
@@ -197,6 +199,34 @@ func TestBuildLoadScript_QuotesAndCountsImages(t *testing.T) {
 	assert.Contains(t, script, `echo "DRY_RUN: $*"`)
 	assert.Contains(t, script, `"$ENGINE" image inspect "$2"`)
 	assert.Contains(t, script, "already present, skipping load")
+	// Fail closed when no checksum tool is available.
+	assert.Contains(t, script, "refuse to load without integrity check")
+	assert.Contains(t, script, "exit 1")
+	assert.NotContains(t, script, "skipping checksum verification")
+}
+
+func TestCreate_ChecksumsIncludeLoadSh(t *testing.T) {
+	work := t.TempDir()
+	out := t.TempDir()
+	chart := writeTemp(t, work, "c-1.0.0.tgz", "chart")
+	img := writeTemp(t, work, "i.tar", "tar")
+	path, err := Create(Spec{
+		ChartName:    "c",
+		ChartVersion: "1.0.0",
+		ChartPath:    chart,
+		OutputDir:    out,
+		Images:       []ImageEntry{{TarPath: img, SourceRef: "x:1", DestRef: "r/x:1", Digest: "sha256:abc"}},
+	})
+	require.NoError(t, err)
+	contents, modes := readArchive(t, path)
+	require.Contains(t, contents, "load.sh")
+	require.Contains(t, contents, "sha256sums.txt")
+	assert.Equal(t, int64(0o755), modes["load.sh"])
+	sums := contents["sha256sums.txt"]
+	assert.Contains(t, sums, "  load.sh")
+	loadSum := sha256.Sum256([]byte(contents["load.sh"]))
+	wantLine := hex.EncodeToString(loadSum[:]) + "  load.sh"
+	assert.Contains(t, sums, wantLine)
 }
 
 func TestBuildLoadScript_IsValidShell(t *testing.T) {
