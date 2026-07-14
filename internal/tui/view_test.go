@@ -85,7 +85,7 @@ func TestViewReview_HoverSpansFullRow(t *testing.T) {
 }
 
 func TestHoverDelegate_SelectedTitleUsesListWidth(t *testing.T) {
-	p := resolvePalette(true)
+	p := resolvePalette(config.ThemeDark, true)
 	items := packagesToItems([]artifacthub.Package{
 		{Name: "short", Description: "d", Stars: 1},
 	}, p)

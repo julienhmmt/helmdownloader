@@ -62,7 +62,7 @@ func main() {
 	logFile := flag.String("log-file", "helmdownloader.log", "path for log output")
 	exportImages := flag.String("export-images", "", "write the discovered image list (JSON) to this path after rendering, for security review")
 	importImages := flag.String("import-images", "", "read an approved image list (JSON) from this path at download time, overriding the discovered set")
-	theme := flag.String("theme", "", "TUI theme: auto (default, follow terminal), light, or dark")
+	theme := flag.String("theme", "", "TUI theme: auto (default, follow terminal), light, dark, high-contrast, ocean, or matrix")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)

@@ -125,19 +125,17 @@ func (m *model) clearStatus() { m.status = "" }
 // newModel constructs the root model from cfg.
 func newModel(cfg config.Config, logger *log.Logger) model {
 	theme := config.NormalizeTheme(cfg.Theme)
-	forcedDark, forced := themeForcedDark(theme)
 	// Auto starts dark-friendly until BackgroundColorMsg arrives.
-	bgIsDark := true
-	if forced {
-		bgIsDark = forcedDark
-	}
-	styles := newStyles(bgIsDark)
+	preferredIsDark := true
+	forced := config.ThemeIsForced(theme)
+	styles := newStyles(theme, preferredIsDark)
+	bgIsDark := styles.palette.isDark
 
 	spin := spinner.New()
 	spin.Spinner = spinner.Dot
 	spin.Style = lipgloss.NewStyle().Foreground(styles.palette.accent)
 
-	fill, empty := progressColors(bgIsDark)
+	fill, empty := progressColors(styles.palette)
 	prog := progress.New(
 		progress.WithColors(fill, empty),
 		progress.WithWidth(60),
@@ -205,26 +203,14 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 	return m
 }
 
-// themeForcedDark reports whether theme forces a dark palette and whether the
-// theme is forced (not auto).
-func themeForcedDark(theme string) (isDark bool, forced bool) {
-	switch config.NormalizeTheme(theme) {
-	case config.ThemeLight:
-		return false, true
-	case config.ThemeDark:
-		return true, true
-	default:
-		return false, false
-	}
-}
-
-// applyTheme rebuilds styles and list/spinner chrome for bgIsDark.
-func (m *model) applyTheme(bgIsDark bool) {
-	m.bgIsDark = bgIsDark
+// applyTheme rebuilds styles and list/spinner chrome from the active cfg.Theme.
+// preferredIsDark is only used when theme is auto (terminal detection).
+func (m *model) applyTheme(preferredIsDark bool) {
+	m.styles = newStyles(m.cfg.Theme, preferredIsDark)
+	m.bgIsDark = m.styles.palette.isDark
 	m.bgKnown = true
-	m.styles = newStyles(bgIsDark)
 	m.spinner.Style = lipgloss.NewStyle().Foreground(m.styles.palette.accent)
-	fill, empty := progressColors(bgIsDark)
+	fill, empty := progressColors(m.styles.palette)
 	m.progress.FullColor = fill
 	m.progress.EmptyColor = empty
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(m.styles.palette.accent).Padding(0, 1)
@@ -244,22 +230,13 @@ func (m *model) applyTheme(bgIsDark bool) {
 	}
 }
 
-// toggleTheme flips light/dark, forces the matching theme on cfg (so View paints
-// a terminal background and auto detection no longer overrides the choice), and
-// surfaces a short status line so the change is obvious.
+// toggleTheme advances to the next named theme (light → dark → high-contrast →
+// ocean → matrix → light). Leaving auto ends terminal-follow mode so detection
+// no longer overrides the user choice.
 func (m *model) toggleTheme() {
-	nextDark := !m.bgIsDark
-	if nextDark {
-		m.cfg.Theme = config.ThemeDark
-	} else {
-		m.cfg.Theme = config.ThemeLight
-	}
-	m.applyTheme(nextDark)
-	if nextDark {
-		m.setStatus("Theme: dark")
-	} else {
-		m.setStatus("Theme: light")
-	}
+	m.cfg.Theme = config.NextTheme(m.cfg.Theme)
+	m.applyTheme(m.bgIsDark)
+	m.setStatus("Theme: " + m.cfg.Theme)
 }
 
 // Init starts the spinner and, for theme=auto, requests the terminal background.

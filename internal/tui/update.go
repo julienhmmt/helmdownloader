@@ -24,8 +24,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.progress.SetWidth(max(0, min(typed.Width-4, 60)))
 		return m, nil
 	case tea.BackgroundColorMsg:
-		// Only auto theme follows terminal detection; light/dark are forced.
-		if config.NormalizeTheme(m.cfg.Theme) != config.ThemeAuto {
+		// Only auto theme follows terminal detection; named themes are forced.
+		if config.ThemeIsForced(m.cfg.Theme) {
 			return m, nil
 		}
 		m.applyTheme(typed.IsDark())
