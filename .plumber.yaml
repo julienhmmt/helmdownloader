@@ -1,0 +1,14 @@
+version: "2.0"
+
+gitlab:
+  controls:
+    containerImageMustNotUseForbiddenTags:
+      enabled: true
+
+github:
+  controls:
+    actionsMustBePinnedByCommitSha:
+      enabled: true
+      trustedOwners:
+        - actions
+        - github
