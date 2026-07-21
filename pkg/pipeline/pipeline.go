@@ -364,11 +364,9 @@ func (p *Pipeline) saveWithRetry(ctx context.Context, srcRef, destRef, tarPath s
 
 // Bundle assembles the downloaded image entries, the chart, and its values into
 // a single archive and returns its path. It then cleans up intermediate
-// artifacts. At least one entry is required.
+// artifacts. entries may be empty for a chart-only bundle (e.g. a CRD chart
+// that ships no container images); the chart itself is always embedded.
 func (p *Pipeline) Bundle(prepared Prepared, pkg artifacthub.Package, version string, entries []bundle.ImageEntry) (string, error) {
-	if len(entries) == 0 {
-		return "", fmt.Errorf("no images were successfully downloaded")
-	}
 	p.logger.Infof("creating bundle for %s %s with %d images", pkg.Name, version, len(entries))
 	bundlePath, err := bundle.Create(bundle.Spec{
 		ChartName:    pkg.Name,

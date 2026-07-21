@@ -489,6 +489,23 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case "enter":
+		// Chart-only bundle (e.g. a CRD chart with no container images): there is
+		// nothing to select or download, so skip straight to assembling the chart
+		// alone. The deprecated/prerelease confirmation gate still applies.
+		if len(m.reviewImages) == 0 {
+			if warn := m.reviewSafetyWarning(); warn != "" && !m.reviewWarnAck {
+				m.reviewWarnAck = true
+				m.setStatus(warn)
+				return m, nil
+			}
+			m.clearStatus()
+			m.prepared.Images = nil
+			m.entries, m.failures = nil, nil
+			m.state = stateBundling
+			m.errStep = "bundle"
+			return m, tea.Batch(m.spinner.Tick,
+				bundleCmd(m.pipeline, m.prepared, m.selectedPkg, m.selectedVersion, nil))
+		}
 		if m.countSelected() == 0 {
 			m.setStatus("Select at least one image (space), or press a to add one.")
 			return m, nil

@@ -257,6 +257,21 @@ func TestHandleBusyKey_EscBundlingIsNoop(t *testing.T) {
 	assert.Equal(t, stateBundling, m2.state)
 }
 
+func TestHandleReviewKey_ChartOnlyEnterBundles(t *testing.T) {
+	// A CRD chart discovers no images: enter must skip download and go straight
+	// to bundling instead of demanding an image selection.
+	m := newTestModel()
+	m.state = stateReview
+	m.selectedPkg = artifacthub.Package{Name: "crd"}
+	m.selectedVersion = "1.0.0"
+	m.reviewImages = nil
+	got, cmd := m.handleReviewKey(keyPress("enter"))
+	m2 := got.(model)
+	assert.Equal(t, stateBundling, m2.state)
+	assert.NotNil(t, cmd)
+	assert.Empty(t, m2.status)
+}
+
 func TestHandleReviewKey_DeprecatedRequiresSecondEnter(t *testing.T) {
 	m := newTestModel()
 	m.state = stateReview

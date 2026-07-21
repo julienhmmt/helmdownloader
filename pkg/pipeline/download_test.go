@@ -446,10 +446,23 @@ func TestCheckDiskSpace(t *testing.T) {
 	}
 }
 
-func TestBundle_RequiresAtLeastOneImage(t *testing.T) {
+func TestBundle_ChartOnlyNoImages(t *testing.T) {
+	// A CRD chart ships no container images: Bundle must still assemble the
+	// chart alone rather than reject an empty image set.
+	work := t.TempDir()
+	out := t.TempDir()
+	chartPath := filepath.Join(work, "crd-1.0.0.tgz")
+	require.NoError(t, os.WriteFile(chartPath, []byte("chart"), 0o644))
+
 	pl := newTestPipeline(&fakeSaver{}, 1)
-	_, err := pl.Bundle(Prepared{}, artifacthub.Package{Name: "c"}, "1.0.0", nil)
-	assert.ErrorContains(t, err, "no images")
+	pl.cfg.WorkDir = work
+	pl.cfg.OutputDir = out
+
+	prepared := Prepared{ChartPath: chartPath, WorkDir: work}
+	path, err := pl.Bundle(prepared, artifacthub.Package{Name: "crd"}, "1.0.0", nil)
+	require.NoError(t, err)
+	_, err = os.Stat(path)
+	require.NoError(t, err, "chart-only bundle should be written")
 }
 
 func TestTarballName_SanitizesUnsafeChars(t *testing.T) {

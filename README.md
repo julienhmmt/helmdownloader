@@ -13,6 +13,7 @@ Run `helmdownloader version` to print the binary identity (release builds inject
 - **Select**: Choose Helm charts and their versions (official / deprecated badges; stars, repo, publisher, app on each row)
 - **Auto-discover**: Automatically extract all container image references from a rendered chart and its `values.yaml`, including the split `registry`/`repository`/`tag`/`digest` form used by many charts
 - **Review**: Manually add, remove, or toggle individual images before downloading (windowed list for large charts; image refs validated on add)
+- **Chart-only bundles**: Charts that ship no container images (e.g. CRD-only charts) bundle the chart alone — press `Enter` on the empty review screen to skip the download step
 - **Download**: Daemonless image pulling using [go-containerregistry](https://github.com/google/go-containerregistry) (no Docker required); per-image progress; Esc cancels busy work while keeping partial successes
 - **Archive**: Create a single compressed bundle per chart (`.tar.gz` or `.tar.zst`) with chart, values, retagged image tarballs, pinned digests, SPDX SBOM, checksums, and `load.sh`
 - **Integrity**: `verify` and `diff` subcommands; `load.sh` checks `sha256sums.txt` (including itself) before load/push
