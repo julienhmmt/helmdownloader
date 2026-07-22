@@ -160,7 +160,7 @@ func (m model) viewReview() string {
 
 	var rows strings.Builder
 	if len(m.reviewImages) == 0 {
-		rows.WriteString(m.styles.muted.Render("This chart ships no container images — it only packages YAML (e.g. CRDs/manifests). Press enter to bundle the chart alone, or 'a' to add an image manually."))
+		rows.WriteString(m.styles.muted.Render("No images in the review list. Press enter to bundle the chart alone (e.g. CRDs/manifests), or 'a' to add an image manually."))
 	} else {
 		start, visible := m.reviewViewport()
 		end := start + visible
@@ -381,9 +381,10 @@ func (m model) viewDone() string {
 	default:
 		lines = append(lines, m.styles.muted.Render(fmt.Sprintf("%d images", len(m.entries))))
 	}
-	next := fmt.Sprintf("  tar xzf %s && ./load.sh", m.bundlePath)
+	extract := bundleExtractCmd(m.bundlePath)
+	next := fmt.Sprintf("  %s && ./load.sh", extract)
 	if chartOnly {
-		next = fmt.Sprintf("  tar xzf %s   # extract the chart, then helm install", m.bundlePath)
+		next = fmt.Sprintf("  %s   # extract the chart, then helm install", extract)
 	}
 	lines = append(lines,
 		"",
@@ -394,6 +395,15 @@ func (m model) viewDone() string {
 		m.renderHelp("n new bundle · ctrl+t themes · q quit"),
 	)
 	return m.frame(lipgloss.JoinVertical(lipgloss.Left, lines...))
+}
+
+// bundleExtractCmd returns a tar extract command matching the bundle codec
+// (gzip .tar.gz vs zstd .tar.zst).
+func bundleExtractCmd(path string) string {
+	if strings.HasSuffix(path, ".tar.zst") {
+		return fmt.Sprintf("tar --zstd -xf %s", path)
+	}
+	return fmt.Sprintf("tar xzf %s", path)
 }
 
 // bundleSizeHint returns a human-readable size for path, or empty if unavailable.

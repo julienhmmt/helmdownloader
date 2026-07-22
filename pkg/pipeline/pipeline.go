@@ -384,12 +384,15 @@ func (p *Pipeline) Bundle(prepared Prepared, pkg artifacthub.Package, version st
 
 	// Clean up intermediate artifacts from the work directory.
 	// For temp work dirs, the entire dir is cleaned up by the caller.
-	// For persistent work dirs, we remove the images subdirectory and the
-	// pulled chart archive, both of which are already embedded in the bundle.
+	// For persistent work dirs, we remove the images subdirectory (only when
+	// this bundle embedded images — a chart-only bundle must not wipe resume
+	// caches left by prior runs) and the pulled chart archive.
 	if prepared.WorkDir != "" && !prepared.TempWorkDir {
-		imagesDir := filepath.Join(prepared.WorkDir, "images")
-		if err := os.RemoveAll(imagesDir); err != nil {
-			p.logger.Debugf("failed to clean up images directory: %v", err)
+		if len(entries) > 0 {
+			imagesDir := filepath.Join(prepared.WorkDir, "images")
+			if err := os.RemoveAll(imagesDir); err != nil {
+				p.logger.Debugf("failed to clean up images directory: %v", err)
+			}
 		}
 		if err := os.Remove(prepared.ChartPath); err != nil && !os.IsNotExist(err) {
 			p.logger.Debugf("failed to clean up chart archive %s: %v", prepared.ChartPath, err)

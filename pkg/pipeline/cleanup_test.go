@@ -46,3 +46,26 @@ func TestBundle_CleansHelmCacheFromPersistentWorkDir(t *testing.T) {
 	_, err = os.Stat(work)
 	assert.NoError(t, err, "persistent work dir itself must be preserved")
 }
+
+func TestBundle_ChartOnlyPreservesImagesDir(t *testing.T) {
+	// Chart-only bundles must not wipe a persistent images/ cache used by --resume.
+	work := t.TempDir()
+	out := t.TempDir()
+	imagesDir := filepath.Join(work, "images")
+	require.NoError(t, os.MkdirAll(imagesDir, 0o755))
+	cached := filepath.Join(imagesDir, "cached.tar")
+	require.NoError(t, os.WriteFile(cached, []byte("resume-cache"), 0o644))
+	chartPath := filepath.Join(work, "crd-1.0.0.tgz")
+	require.NoError(t, os.WriteFile(chartPath, []byte("chart"), 0o644))
+	cfg := config.Default()
+	cfg.WorkDir = work
+	cfg.OutputDir = out
+	pl := New(cfg, log.Discard())
+	prepared := Prepared{ChartPath: chartPath, WorkDir: work, TempWorkDir: false}
+	_, err := pl.Bundle(prepared, artifacthub.Package{Name: "crd"}, "1.0.0", nil)
+	require.NoError(t, err)
+	_, err = os.Stat(cached)
+	assert.NoError(t, err, "chart-only bundle must preserve images/ for --resume")
+	_, err = os.Stat(chartPath)
+	assert.True(t, os.IsNotExist(err), "chart archive is still cleaned up")
+}

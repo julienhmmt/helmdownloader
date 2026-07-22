@@ -252,6 +252,37 @@ func TestViewDone_ShowsVerifyAndImageCount(t *testing.T) {
 	assert.Contains(t, out, "verify")
 	assert.Contains(t, out, "3 images")
 	assert.Contains(t, out, "load.sh")
+	assert.Contains(t, out, "tar xzf archives/argo-cd-1.0.0-bundle.tar.gz")
+}
+
+func TestViewDone_ChartOnlyZstdExtractHint(t *testing.T) {
+	m := newTestModel()
+	m.state = stateDone
+	m.bundlePath = "archives/crd-1.0.0-bundle.tar.zst"
+	m.entries = nil
+	m.failures = nil
+	out := m.render()
+	assert.Contains(t, out, "chart only")
+	assert.Contains(t, out, "tar --zstd -xf archives/crd-1.0.0-bundle.tar.zst")
+	assert.NotContains(t, out, "load.sh")
+}
+
+func TestBundleExtractCmd(t *testing.T) {
+	assert.Equal(t, "tar xzf a.tar.gz", bundleExtractCmd("a.tar.gz"))
+	assert.Equal(t, "tar --zstd -xf a.tar.zst", bundleExtractCmd("a.tar.zst"))
+	// Bare .zst (not our bundle suffix) must not pick the zstd codec.
+	assert.Equal(t, "tar xzf foo.zst", bundleExtractCmd("foo.zst"))
+}
+
+func TestViewReview_EmptyListCopy(t *testing.T) {
+	m := newTestModel()
+	m.state = stateReview
+	m.selectedPkg = artifacthub.Package{Name: "crd"}
+	m.selectedVersion = "1.0.0"
+	m.reviewImages = nil
+	out := m.render()
+	assert.Contains(t, out, "No images in the review list")
+	assert.Contains(t, out, "bundle chart (no images)")
 }
 
 func TestViewError_ShowsStepLabel(t *testing.T) {

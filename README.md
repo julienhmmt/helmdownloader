@@ -146,7 +146,7 @@ The status line reports the active `sort:`, `filter:`, and the count of charts s
 | `-log-level` | `info` | Set log level: `silent`, `info`, or `debug` |
 | `-log-file` | `helmdownloader.log` | Path for log output |
 | `-export-images` | (none) | Write the discovered image list (JSON) to this path after rendering, for security review |
-| `-import-images` | (none) | Read an approved image list (JSON) from this path at download time, overriding the discovered set |
+| `-import-images` | (none) | Read an approved image list (JSON) from this path when entering the Review screen, overriding the discovered set |
 | `-theme` | `auto` | TUI theme: `auto` (follow terminal), `light`, `dark`, `high-contrast`, `ocean`, or `matrix`. Named themes set a matching terminal background. Press `Ctrl+T` in the TUI to open the theme menu |
 
 ### Configuration File
@@ -205,11 +205,11 @@ Use `-export-images` and `-import-images` to review the discovered image list wi
 #    remove untrusted refs, add missing ones).
 
 # 3. Run with -import-images: the approved list overrides the discovered
-#    set at download time.
+#    set when the Review screen opens (you can still toggle/edit before Enter).
 ./helmdownloader -import-images images.json
 ```
 
-Import rejects invalid image references with a non-zero error before download so a bad edit fails closed at load time rather than after pull retries.
+Import rejects invalid image references with a non-zero error when entering Review so a bad edit fails closed at load time rather than after pull retries.
 
 The JSON format is an array of entries:
 
