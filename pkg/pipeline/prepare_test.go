@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -179,4 +180,21 @@ func TestPrepare_ValuesFilesAndSetValuesFlowThrough(t *testing.T) {
 	_, err := pl.Prepare(context.Background(), testPkg(), "1.0.0")
 	require.NoError(t, err)
 	assert.Len(t, h.templateCalls, 1, "Template should be called once with the opts applied")
+}
+
+func TestPrepare_UsesConfiguredTempDir(t *testing.T) {
+	tempBase := t.TempDir()
+	h := &fakeHelm{
+		valuesOut:   "image: redis:7\n",
+		templateOut: "image: nginx:1.25\n",
+	}
+	cfg := config.Default()
+	cfg.WorkDir = ""
+	cfg.TempDir = tempBase
+	pl := newForTest(cfg, log.Discard(), h, &fakeSaver{})
+
+	prep, err := pl.Prepare(context.Background(), testPkg(), "1.0.0")
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(prep.WorkDir, tempBase), "work dir should be under configured temp dir")
+	assert.True(t, prep.TempWorkDir)
 }

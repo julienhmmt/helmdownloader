@@ -20,6 +20,7 @@ func TestDefault_HasSensibleValues(t *testing.T) {
 	assert.Equal(t, 4, cfg.Concurrency)
 	assert.Equal(t, 2, cfg.Retries)
 	assert.Equal(t, 20, cfg.SearchLimit)
+	assert.Equal(t, os.TempDir(), cfg.TempDir)
 	assert.Equal(t, config.ThemeAuto, cfg.Theme)
 }
 
@@ -131,6 +132,14 @@ func TestLoad_ThemeFromYAML(t *testing.T) {
 	assert.Equal(t, "light", cfg.Theme)
 }
 
+func TestLoad_TempDirFromYAML(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("temp_dir: /custom/tmp\n"), 0o644))
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "/custom/tmp", cfg.TempDir)
+}
+
 func TestValidateTheme(t *testing.T) {
 	assert.NoError(t, config.ValidateTheme(""))
 	assert.NoError(t, config.ValidateTheme("auto"))
@@ -166,4 +175,44 @@ func TestThemeIsForced(t *testing.T) {
 	assert.False(t, config.ThemeIsForced(""))
 	assert.True(t, config.ThemeIsForced(config.ThemeLight))
 	assert.True(t, config.ThemeIsForced(config.ThemeMatrix))
+}
+
+func TestFindWritableTempDir_UsesUsablePreferred(t *testing.T) {
+	preferred := t.TempDir()
+	dir, warn, err := config.FindWritableTempDir(preferred)
+	require.NoError(t, err)
+	assert.Equal(t, preferred, dir)
+	assert.Empty(t, warn)
+}
+
+func TestFindWritableTempDir_FallsBackWhenPreferredNotWritable(t *testing.T) {
+	// Use a regular file as a non-directory candidate so MkdirAll fails.
+	file := filepath.Join(t.TempDir(), "not-a-dir")
+	require.NoError(t, os.WriteFile(file, []byte("x"), 0o644))
+	dir, warn, err := config.FindWritableTempDir(file)
+	require.NoError(t, err)
+	assert.NotEqual(t, file, dir)
+	assert.Contains(t, warn, "not usable")
+	assert.NotEmpty(t, dir)
+}
+
+func TestFindWritableTempDir_EmptyPreferredUsesSystemTemp(t *testing.T) {
+	sysTemp := filepath.Clean(os.TempDir())
+	if err := config.EnsureWritableDir(sysTemp); err != nil {
+		t.Skipf("system temp dir not usable: %v", err)
+	}
+	dir, warn, err := config.FindWritableTempDir("")
+	require.NoError(t, err)
+	assert.Equal(t, sysTemp, dir)
+	assert.Empty(t, warn)
+}
+
+func TestEnsureWritableDir_WritableDirectory(t *testing.T) {
+	require.NoError(t, config.EnsureWritableDir(t.TempDir()))
+}
+
+func TestEnsureWritableDir_FileIsRejected(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "not-a-dir")
+	require.NoError(t, os.WriteFile(file, []byte("x"), 0o644))
+	assert.Error(t, config.EnsureWritableDir(file))
 }

@@ -71,6 +71,14 @@ output_dir: "archives"
 # Default: "" (temporary)
 work_dir: ""
 
+# Parent directory used for temporary work directories when work_dir is empty.
+# At startup the path is tested for write permissions; if it is not writable,
+# helmdownloader warns and tries common fallbacks such as /tmp, /var/tmp, and
+# the current working directory.
+# CLI: -temp-dir
+# Default: "" (system temp dir, e.g. /tmp)
+temp_dir: ""
+
 # -----------------------------------------------------------------------------
 # Download behavior
 # -----------------------------------------------------------------------------
