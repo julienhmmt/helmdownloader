@@ -99,7 +99,7 @@ func (p *Pipeline) Prepare(ctx context.Context, pkg artifacthub.Package, version
 			return Prepared{}, fmt.Errorf("create work dir: %w", err)
 		}
 	} else {
-		workDir, err = os.MkdirTemp("", "helmdownloader-")
+		workDir, err = os.MkdirTemp(p.cfg.TempDir, "helmdownloader-")
 		if err != nil {
 			return Prepared{}, fmt.Errorf("create temp work dir: %w", err)
 		}

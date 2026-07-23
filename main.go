@@ -52,6 +52,7 @@ func main() {
 	configPath := flag.String("config", config.DefaultPath(), "path to config file")
 	outputDir := flag.String("output", "", "override output directory for bundles")
 	workDir := flag.String("work-dir", "", "override work directory for intermediate files (charts, images)")
+	tempDir := flag.String("temp-dir", "", "override the parent directory for temporary work dirs (default: system temp dir, e.g. /tmp)")
 	concurrency := flag.Int("concurrency", 0, "override max parallel image downloads (default 4)")
 	retries := flag.Int("retries", -1, "override retry attempts per failed image pull (default 2)")
 	prefix := flag.String("registry-prefix", "", "override the private registry prefix")
@@ -79,6 +80,25 @@ func main() {
 	}
 	if *workDir != "" {
 		cfg.WorkDir = *workDir
+	}
+	if *tempDir != "" {
+		cfg.TempDir = *tempDir
+	}
+	if cfg.WorkDir != "" {
+		if err := config.EnsureWritableDir(cfg.WorkDir); err != nil {
+			fmt.Fprintf(os.Stderr, "error: work dir is not usable: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		resolvedTemp, warn, err := config.FindWritableTempDir(cfg.TempDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		if warn != "" {
+			fmt.Fprintln(os.Stderr, warn)
+		}
+		cfg.TempDir = resolvedTemp
 	}
 	if *concurrency > 0 {
 		cfg.Concurrency = *concurrency
