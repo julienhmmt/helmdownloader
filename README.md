@@ -84,6 +84,8 @@ go build -o helmdownloader .
 
 The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `Enter`, then navigate through the results to select a chart and version.
 
+To bundle several charts in one sitting, press `a` (add another chart) on the Done screen: it returns to search while keeping the list of bundles already created. Each chart produces its own bundle. For fully headless multi-chart runs (a YAML list, no TUI), use the [`batch`](#batch) subcommand instead.
+
 ### Screens
 
 | Screen | Keys | Description |
@@ -95,7 +97,7 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 | Review | `Space` toggle, `a` add, `d` delete, `j`/`k` move, `PgUp`/`PgDn` (or `Ctrl+u`/`Ctrl+d`) page, `g`/`G` jump, `Enter` download, `Ctrl+T` themes, `Esc` back | Review auto-discovered images; long lists are windowed |
 | Add Image | `Enter` confirm, `Ctrl+T` themes, `Esc` cancel | Manually add an image reference |
 | Download | `Esc` cancel (back to review or partial results), `Ctrl+T` themes, `Ctrl+C` quit | Pulls images; partial successes are kept |
-| Done | `n` new bundle, `Ctrl+T` themes, `q` quit | Path, image counts, size, and next steps (`verify` / extract) |
+| Done | `a` add another chart, `n` new session, `Ctrl+T` themes, `q` quit | Path, image counts, size, and next steps (`verify` / extract). `a` chains another chart into the same session; each chart still ships its own bundle and all session bundles are listed here |
 | Theme | `j`/`k` move, `1`–`6` jump, `Enter` apply, `Esc` cancel | Pick a palette with live preview (`Ctrl+T` from most screens) |
 
 ### Sorting and Filtering Results

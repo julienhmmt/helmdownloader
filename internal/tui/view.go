@@ -391,8 +391,19 @@ func (m model) viewDone() string {
 		m.styles.muted.Render("Next:"),
 		m.styles.muted.Render(fmt.Sprintf("  helmdownloader verify %s", m.bundlePath)),
 		m.styles.muted.Render(next),
+	)
+	// When the user chained charts this session, list every bundle produced so
+	// far — each chart ships its own archive.
+	if len(m.sessionBundles) > 1 {
+		lines = append(lines, "",
+			m.styles.muted.Render(fmt.Sprintf("Session bundles (%d):", len(m.sessionBundles))))
+		for _, p := range m.sessionBundles {
+			lines = append(lines, m.styles.muted.Render("  "+p))
+		}
+	}
+	lines = append(lines,
 		"",
-		m.renderHelp("n new bundle · ctrl+t themes · q quit"),
+		m.renderHelp("a add another chart · n new session · ctrl+t themes · q quit"),
 	)
 	return m.frame(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }
