@@ -61,7 +61,9 @@ func ParseList(data []byte) ([]ChartRef, error) {
 func splitChart(chart string) (repo, name string, ok bool) {
 	repo, name, found := strings.Cut(strings.TrimSpace(chart), "/")
 	repo, name = strings.TrimSpace(repo), strings.TrimSpace(name)
-	if !found || repo == "" || name == "" {
+	// ArtifactHub coordinates are exactly repo/name; a second slash (e.g.
+	// "repo/name/extra") would otherwise slip through as an unusable name.
+	if !found || repo == "" || name == "" || strings.Contains(name, "/") {
 		return "", "", false
 	}
 	return repo, name, true

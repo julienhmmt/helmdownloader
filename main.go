@@ -224,7 +224,10 @@ func runBatch(args []string) {
 }
 
 func createLogger(cfg config.Config) *log.Logger {
-	if !cfg.Verbose {
+	// verbose is the primary switch; an explicit log_level: debug in the config
+	// also enables logging, so the config-only batch path can turn on logs
+	// without a -v flag (info stays gated so default runs write no log file).
+	if !cfg.Verbose && cfg.LogLevel != "debug" {
 		return log.Discard()
 	}
 	level := parseLogLevel(cfg.LogLevel)

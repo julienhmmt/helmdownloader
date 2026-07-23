@@ -27,6 +27,7 @@ func TestParseList(t *testing.T) {
 		{name: "missing slash", yaml: "charts:\n  - chart: nginx\n", wantErr: true},
 		{name: "empty repo", yaml: "charts:\n  - chart: /nginx\n", wantErr: true},
 		{name: "empty name", yaml: "charts:\n  - chart: bitnami/\n", wantErr: true},
+		{name: "extra slash", yaml: "charts:\n  - chart: bitnami/nginx/extra\n", wantErr: true},
 		{name: "malformed yaml", yaml: "charts: [\n", wantErr: true},
 	}
 	for _, tt := range tests {
