@@ -5,7 +5,6 @@
 # prefix, output dir, platform, concurrency, compression, proxy, resume, …) is
 # read from the config file; see config.example.yaml.
 charts:
-  - chart: bitnami/nginx
-    version: 15.1.0
-  - chart: prometheus-community/kube-prometheus-stack
-  - chart: grafana/grafana
+  - chart: ceph-csi/ceph-csi-cephfs
+    version: 3.16.2
+  - chart: argo/argo-cd
