@@ -89,6 +89,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, warn)
 	}
 	cfg.TempDir = resolvedTemp
+	if cfg.WorkDir != "" {
+		if err := config.EnsureWritableDir(cfg.WorkDir); err != nil {
+			fmt.Fprintf(os.Stderr, "error: work dir %s is not usable: %v\n", cfg.WorkDir, err)
+			os.Exit(1)
+		}
+	}
 	if *concurrency > 0 {
 		cfg.Concurrency = *concurrency
 	}

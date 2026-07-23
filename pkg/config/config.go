@@ -233,9 +233,9 @@ func fileExists(path string) bool {
 
 // FindWritableTempDir returns a writable temporary directory, starting with
 // preferred. If preferred is empty, the system temporary directory is tried.
-// If the requested directory is not writable, it falls back to common
+// If the requested directory is not usable, it falls back to common
 // alternatives and returns a warning to show the user. If no candidate is
-// usable, it returns an error.
+// usable, it returns an error describing why the preferred one failed.
 func FindWritableTempDir(preferred string) (dir, warn string, err error) {
 	sysTemp := os.TempDir()
 	if preferred == "" {
@@ -259,28 +259,54 @@ func FindWritableTempDir(preferred string) (dir, warn string, err error) {
 		uniq = append(uniq, d)
 	}
 	candidates = uniq
+
+	preferredClean := filepath.Clean(preferred)
+	var preferredErr error
 	for _, d := range candidates {
 		clean := filepath.Clean(d)
-		if !testWritableDir(clean) {
+		if cerr := EnsureWritableDir(clean); cerr != nil {
+			if clean == preferredClean {
+				preferredErr = cerr
+			}
 			continue
 		}
-		if clean == filepath.Clean(preferred) {
+		if clean == preferredClean {
 			return clean, "", nil
 		}
-		return clean, fmt.Sprintf("warning: temp dir %s is not writable, using fallback %s", preferred, clean), nil
+		if preferredErr != nil {
+			return clean, fmt.Sprintf("warning: temp dir %s is not usable (%v), using fallback %s", preferred, preferredErr, clean), nil
+		}
+		return clean, "", nil
+	}
+	if preferredErr != nil {
+		return "", "", fmt.Errorf("no writable temporary directory found (preferred %s: %w)", preferred, preferredErr)
 	}
 	return "", "", fmt.Errorf("no writable temporary directory found (tried: %s)", strings.Join(candidates, ", "))
 }
 
-func testWritableDir(dir string) bool {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return false
+// EnsureWritableDir checks that dir exists and can be written to. If dir does
+// not exist, it attempts to create it. Any write-test file is removed before
+// returning.
+func EnsureWritableDir(dir string) error {
+	info, err := os.Stat(dir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("stat %s: %w", dir, err)
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create directory %s: %w", dir, err)
+		}
+	} else if !info.IsDir() {
+		return fmt.Errorf("%s is not a directory", dir)
 	}
 	f, err := os.CreateTemp(dir, "helmdownloader-writetest-*")
 	if err != nil {
-		return false
+		if os.IsPermission(err) {
+			return fmt.Errorf("%s is not writable", dir)
+		}
+		return fmt.Errorf("write test in %s: %w", dir, err)
 	}
 	_ = f.Close()
 	_ = os.Remove(f.Name())
-	return true
+	return nil
 }

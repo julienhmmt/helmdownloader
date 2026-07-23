@@ -192,6 +192,23 @@ func TestFindWritableTempDir_FallsBackWhenPreferredNotWritable(t *testing.T) {
 	dir, warn, err := config.FindWritableTempDir(file)
 	require.NoError(t, err)
 	assert.NotEqual(t, file, dir)
-	assert.Contains(t, warn, "not writable")
+	assert.Contains(t, warn, "not usable")
 	assert.NotEmpty(t, dir)
+}
+
+func TestFindWritableTempDir_EmptyPreferredUsesSystemTemp(t *testing.T) {
+	dir, warn, err := config.FindWritableTempDir("")
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Clean(os.TempDir()), dir)
+	assert.Empty(t, warn)
+}
+
+func TestEnsureWritableDir_WritableDirectory(t *testing.T) {
+	require.NoError(t, config.EnsureWritableDir(t.TempDir()))
+}
+
+func TestEnsureWritableDir_FileIsRejected(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "not-a-dir")
+	require.NoError(t, os.WriteFile(file, []byte("x"), 0o644))
+	assert.Error(t, config.EnsureWritableDir(file))
 }
