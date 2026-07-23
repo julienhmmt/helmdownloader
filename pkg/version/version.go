@@ -6,7 +6,7 @@ package version
 // Default "dev" marks non-release builds.
 var Version = "dev"
 
-// String returns the tool identity, e.g. "helmdownloader 0.3.0" or
+// String returns the tool identity, e.g. "helmdownloader 0.4.0" or
 // "helmdownloader dev".
 func String() string {
 	return "helmdownloader " + Version
