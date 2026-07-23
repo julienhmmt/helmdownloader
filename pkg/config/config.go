@@ -42,6 +42,10 @@ type Config struct {
 	// WorkDir is where intermediate files (charts, images) are stored during processing.
 	// If empty, a temporary directory is used.
 	WorkDir string `yaml:"work_dir"`
+	// TempDir is the parent directory used for temporary work directories
+	// when WorkDir is empty. It is verified at startup; if not writable, a
+	// warning is printed and a fallback is selected.
+	TempDir string `yaml:"temp_dir"`
 	// Concurrency is the maximum number of images downloaded in parallel.
 	// Values below 1 are treated as 1.
 	Concurrency int `yaml:"concurrency"`
@@ -112,6 +116,7 @@ func Default() Config {
 		RegistryPrefix: "",
 		Retries:        2,
 		SearchLimit:    20,
+		TempDir:        os.TempDir(),
 		Theme:          ThemeAuto,
 	}
 }
@@ -224,4 +229,58 @@ func candidateConfigPaths() []string {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// FindWritableTempDir returns a writable temporary directory, starting with
+// preferred. If preferred is empty, the system temporary directory is tried.
+// If the requested directory is not writable, it falls back to common
+// alternatives and returns a warning to show the user. If no candidate is
+// usable, it returns an error.
+func FindWritableTempDir(preferred string) (dir, warn string, err error) {
+	sysTemp := os.TempDir()
+	if preferred == "" {
+		preferred = sysTemp
+	}
+	candidates := []string{preferred, sysTemp}
+	candidates = append(candidates, fallbackTempDirs()...)
+	if cwd, _ := os.Getwd(); cwd != "" && cwd != preferred && cwd != sysTemp {
+		candidates = append(candidates, cwd)
+	}
+	seen := make(map[string]struct{}, len(candidates))
+	uniq := make([]string, 0, len(candidates))
+	for _, d := range candidates {
+		if d == "" {
+			continue
+		}
+		if _, ok := seen[d]; ok {
+			continue
+		}
+		seen[d] = struct{}{}
+		uniq = append(uniq, d)
+	}
+	candidates = uniq
+	for _, d := range candidates {
+		clean := filepath.Clean(d)
+		if !testWritableDir(clean) {
+			continue
+		}
+		if clean == filepath.Clean(preferred) {
+			return clean, "", nil
+		}
+		return clean, fmt.Sprintf("warning: temp dir %s is not writable, using fallback %s", preferred, clean), nil
+	}
+	return "", "", fmt.Errorf("no writable temporary directory found (tried: %s)", strings.Join(candidates, ", "))
+}
+
+func testWritableDir(dir string) bool {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return false
+	}
+	f, err := os.CreateTemp(dir, "helmdownloader-writetest-*")
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	_ = os.Remove(f.Name())
+	return true
 }
