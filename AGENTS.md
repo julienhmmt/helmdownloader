@@ -75,8 +75,9 @@ Smoke tests need network/helm; they skip under `-short`.
 
 | Path | Role |
 | ---- | ---- |
-| `main.go` | CLI flags, subcommands (`verify`, `diff`), preflight, TUI entry |
+| `main.go` | CLI flags, subcommands (`verify`, `diff`, `batch`), preflight, TUI entry |
 | `pkg/config` | YAML config + defaults |
+| `pkg/batch` | Headless YAML-list download loop (automation; no TUI) |
 | `pkg/artifacthub` | ArtifactHub REST (search, versions) |
 | `pkg/helm` | Shell out to `helm` (hermetic repo/cache per work dir) |
 | `pkg/images` | Extract image refs; retag with registry prefix |

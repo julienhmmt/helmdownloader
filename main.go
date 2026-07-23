@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/julienhmmt/helmdownloader/internal/tui"
+	"github.com/julienhmmt/helmdownloader/pkg/batch"
 	"github.com/julienhmmt/helmdownloader/pkg/bundle"
 	"github.com/julienhmmt/helmdownloader/pkg/config"
 	"github.com/julienhmmt/helmdownloader/pkg/helm"
@@ -36,6 +37,9 @@ func main() {
 			return
 		case "diff":
 			runDiff(os.Args[2:])
+			return
+		case "batch":
+			runBatch(os.Args[2:])
 			return
 		case "version", "-version", "--version":
 			fmt.Println(version.String())
@@ -109,14 +113,7 @@ func main() {
 	if *proxy != "" {
 		cfg.HTTPSProxy = *proxy
 	}
-	// Check environment variables if proxy not set via CLI or config
-	if cfg.HTTPSProxy == "" {
-		if envProxy := os.Getenv("HTTP_PROXY"); envProxy != "" {
-			cfg.HTTPSProxy = envProxy
-		} else if envProxy := os.Getenv("HTTPS_PROXY"); envProxy != "" {
-			cfg.HTTPSProxy = envProxy
-		}
-	}
+	cfg = applyProxyEnv(cfg)
 	if *verbose {
 		cfg.Verbose = true
 		cfg.LogLevel = "debug"
@@ -159,6 +156,69 @@ func main() {
 
 	if err := tui.Run(cfg, logger); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// applyProxyEnv fills cfg.HTTPSProxy from HTTP_PROXY/HTTPS_PROXY when it was not
+// set via CLI or config, returning the updated copy.
+func applyProxyEnv(cfg config.Config) config.Config {
+	if cfg.HTTPSProxy != "" {
+		return cfg
+	}
+	if envProxy := os.Getenv("HTTP_PROXY"); envProxy != "" {
+		cfg.HTTPSProxy = envProxy
+	} else if envProxy := os.Getenv("HTTPS_PROXY"); envProxy != "" {
+		cfg.HTTPSProxy = envProxy
+	}
+	return cfg
+}
+
+// runBatch runs the batch subcommand: `helmdownloader batch [-config path] <list.yaml>`.
+// It downloads every chart in the YAML list headlessly. All settings other than
+// the config path come from the config file (registry prefix, output dir, etc.).
+func runBatch(args []string) {
+	fs := flag.NewFlagSet("batch", flag.ExitOnError)
+	configPath := fs.String("config", config.DefaultPath(), "path to config file")
+	if err := fs.Parse(args); err != nil {
+		os.Exit(2)
+	}
+	rest := fs.Args()
+	if len(rest) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: helmdownloader batch [-config path] <charts.yaml>")
+		os.Exit(2)
+	}
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
+		os.Exit(1)
+	}
+	cfg = applyProxyEnv(cfg)
+	if err := bundle.ValidateCompression(cfg.Compression); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	logger := createLogger(cfg)
+
+	data, err := os.ReadFile(rest[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: read chart list: %v\n", err)
+		os.Exit(1)
+	}
+	refs, err := batch.ParseList(data)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	ctx := context.Background()
+	if err := helm.New(cfg.HelmBin, cfg.HTTPSProxy, logger).Check(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	if err := batch.Run(ctx, cfg, logger, refs, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "batch: %v\n", err)
 		os.Exit(1)
 	}
 }
