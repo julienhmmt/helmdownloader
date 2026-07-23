@@ -631,9 +631,6 @@ func (m model) handleEndKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// reset returns the model to a fresh search state, dropping any session history.
-func (m model) reset() (model, tea.Cmd) { return m.resetSession(false) }
-
 // resetSession returns the model to a fresh search state for another chart. When
 // keepSession is true the accumulated sessionBundles carry over, so chaining
 // charts keeps one running list of produced bundles.
