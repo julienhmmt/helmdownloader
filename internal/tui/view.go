@@ -389,7 +389,7 @@ func (m model) viewDone() string {
 	lines = append(lines,
 		"",
 		m.styles.muted.Render("Next:"),
-		m.styles.muted.Render(fmt.Sprintf("  helmdownloader verify %s", m.bundlePath)),
+		m.styles.muted.Render(fmt.Sprintf("  helmdownloader verify %s", shellArg(m.bundlePath))),
 		m.styles.muted.Render(next),
 	)
 	// When the user chained charts this session, list every bundle produced so
@@ -412,9 +412,20 @@ func (m model) viewDone() string {
 // (gzip .tar.gz vs zstd .tar.zst).
 func bundleExtractCmd(path string) string {
 	if strings.HasSuffix(path, ".tar.zst") {
-		return fmt.Sprintf("tar --zstd -xf %s", path)
+		return fmt.Sprintf("tar --zstd -xf %s", shellArg(path))
 	}
-	return fmt.Sprintf("tar xzf %s", path)
+	return fmt.Sprintf("tar xzf %s", shellArg(path))
+}
+
+// shellArg quotes a path for safe copy-paste into a shell, but only when it
+// contains characters that would otherwise split or expand. Clean paths stay
+// bare so the common case reads cleanly. Single-quote wrapping prevents any
+// expansion; an embedded single quote is escaped the POSIX way ('\”).
+func shellArg(path string) string {
+	if path == "" || !strings.ContainsAny(path, " \t\n\"'\\$`*?[]|&;<>(){}#~!") {
+		return path
+	}
+	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
 }
 
 // bundleSizeHint returns a human-readable size for path, or empty if unavailable.
