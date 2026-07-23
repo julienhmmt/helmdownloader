@@ -39,6 +39,30 @@ func keyPress(key string) tea.KeyPressMsg {
 	return tea.KeyPressMsg{Code: 0, Text: key}
 }
 
+func TestDoneMsg_AppendsSessionBundle(t *testing.T) {
+	m := newModel(config.Default(), log.Discard())
+	m.state = stateBundling
+	got, _ := m.Update(doneMsg{bundlePath: "/tmp/a.tar.gz"})
+	m2 := got.(model)
+	assert.Equal(t, stateDone, m2.state)
+	assert.Equal(t, []string{"/tmp/a.tar.gz"}, m2.sessionBundles)
+}
+
+func TestAddAnotherChart_KeepsSessionBundles(t *testing.T) {
+	m := newModel(config.Default(), log.Discard())
+	m.width, m.height = 100, 40
+	m.state = stateDone
+	m.sessionBundles = []string{"/tmp/a.tar.gz"}
+	got, _ := m.handleEndKey(keyPress("a"))
+	m2 := got.(model)
+	assert.Equal(t, stateSearch, m2.state)
+	assert.Equal(t, []string{"/tmp/a.tar.gz"}, m2.sessionBundles, "add-another must carry bundles forward")
+
+	// n starts a clean session — history dropped.
+	fresh, _ := m.handleEndKey(keyPress("n"))
+	assert.Empty(t, fresh.(model).sessionBundles)
+}
+
 func TestHandleResultsKey_SCycleSortField(t *testing.T) {
 	m := newResultsModel()
 	require.Equal(t, sortStars, m.sortField)

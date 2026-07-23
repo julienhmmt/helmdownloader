@@ -106,7 +106,11 @@ type model struct {
 	entries       []bundle.ImageEntry
 	failures      []pipeline.ImageFailure
 	bundlePath    string
-	err           error
+	// sessionBundles accumulates every bundle path created this session. The user
+	// can chain charts ("add another chart" on the done screen); each chart still
+	// produces its own bundle, and the done screen lists them all.
+	sessionBundles []string
+	err            error
 	// errStep labels which async step failed (search, prepare, download, bundle)
 	// so the error screen can frame the message for the user.
 	errStep string

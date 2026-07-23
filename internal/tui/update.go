@@ -136,6 +136,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.bundlePath = typed.bundlePath
+		m.sessionBundles = append(m.sessionBundles, typed.bundlePath)
 		m.state = stateDone
 		m.errStep = ""
 		return m, nil
@@ -614,21 +615,35 @@ func (m model) handleEndKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "q", "esc", "enter":
 		m.cancel()
 		return m, tea.Batch(cleanupCmd(m.prepared.WorkDir, m.prepared.TempWorkDir), tea.Quit)
+	case "a":
+		// Add another chart to this session: same fresh search, but carry the
+		// list of bundles already produced so the done screen keeps listing them.
+		// Only meaningful after a successful bundle, not on the error screen.
+		if m.state != stateDone {
+			return m, nil
+		}
+		fresh, cmd := m.resetSession(true)
+		return fresh, cmd
 	case "n":
-		fresh, cmd := m.reset()
+		fresh, cmd := m.resetSession(false)
 		return fresh, cmd
 	}
 	return m, nil
 }
 
-// reset returns the model to a fresh search state for another chart.
-func (m model) reset() (model, tea.Cmd) {
+// resetSession returns the model to a fresh search state for another chart. When
+// keepSession is true the accumulated sessionBundles carry over, so chaining
+// charts keeps one running list of produced bundles.
+func (m model) resetSession(keepSession bool) (model, tea.Cmd) {
 	m.cancel()
 	fresh := newModel(m.cfg, m.logger)
 	fresh.width, fresh.height = m.width, m.height
 	fresh.results.SetSize(m.width-2, m.height-6)
 	fresh.versions.SetSize(m.width-2, m.height-6)
 	fresh.progress.SetWidth(m.progress.Width())
+	if keepSession {
+		fresh.sessionBundles = m.sessionBundles
+	}
 	return fresh, cleanupCmd(m.prepared.WorkDir, m.prepared.TempWorkDir)
 }
 
