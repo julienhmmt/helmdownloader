@@ -80,20 +80,21 @@ func main() {
 	if *tempDir != "" {
 		cfg.TempDir = *tempDir
 	}
-	resolvedTemp, warn, err := config.FindWritableTempDir(cfg.TempDir)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
-	if warn != "" {
-		fmt.Fprintln(os.Stderr, warn)
-	}
-	cfg.TempDir = resolvedTemp
 	if cfg.WorkDir != "" {
 		if err := config.EnsureWritableDir(cfg.WorkDir); err != nil {
-			fmt.Fprintf(os.Stderr, "error: work dir %s is not usable: %v\n", cfg.WorkDir, err)
+			fmt.Fprintf(os.Stderr, "error: work dir is not usable: %v\n", err)
 			os.Exit(1)
 		}
+	} else {
+		resolvedTemp, warn, err := config.FindWritableTempDir(cfg.TempDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		if warn != "" {
+			fmt.Fprintln(os.Stderr, warn)
+		}
+		cfg.TempDir = resolvedTemp
 	}
 	if *concurrency > 0 {
 		cfg.Concurrency = *concurrency

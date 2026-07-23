@@ -197,9 +197,13 @@ func TestFindWritableTempDir_FallsBackWhenPreferredNotWritable(t *testing.T) {
 }
 
 func TestFindWritableTempDir_EmptyPreferredUsesSystemTemp(t *testing.T) {
+	sysTemp := filepath.Clean(os.TempDir())
+	if err := config.EnsureWritableDir(sysTemp); err != nil {
+		t.Skipf("system temp dir not usable: %v", err)
+	}
 	dir, warn, err := config.FindWritableTempDir("")
 	require.NoError(t, err)
-	assert.Equal(t, filepath.Clean(os.TempDir()), dir)
+	assert.Equal(t, sysTemp, dir)
 	assert.Empty(t, warn)
 }
 

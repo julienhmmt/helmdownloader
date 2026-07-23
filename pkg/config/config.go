@@ -291,10 +291,10 @@ func EnsureWritableDir(dir string) error {
 	info, err := os.Stat(dir)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return fmt.Errorf("stat %s: %w", dir, err)
+			return fmt.Errorf("directory check: %w", err)
 		}
 		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return fmt.Errorf("create directory %s: %w", dir, err)
+			return fmt.Errorf("create directory: %w", err)
 		}
 	} else if !info.IsDir() {
 		return fmt.Errorf("%s is not a directory", dir)
@@ -304,7 +304,7 @@ func EnsureWritableDir(dir string) error {
 		if os.IsPermission(err) {
 			return fmt.Errorf("%s is not writable", dir)
 		}
-		return fmt.Errorf("write test in %s: %w", dir, err)
+		return fmt.Errorf("write test: %w", err)
 	}
 	_ = f.Close()
 	_ = os.Remove(f.Name())
