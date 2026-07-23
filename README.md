@@ -1,6 +1,6 @@
 # HelmDownloader
 
-A TUI (Terminal User Interface) application (**v0.3.0**) for downloading Helm charts and their container images, then bundling them into a single, integrity-checked archive for airgapped infrastructure.
+A TUI (Terminal User Interface) application (**v0.4.0**) for downloading Helm charts and their container images, then bundling them into a single, integrity-checked archive for airgapped infrastructure.
 
 Run `helmdownloader version` to print the binary identity (release builds inject the tag; `make build` uses `git describe`).
 
