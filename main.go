@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/julienhmmt/helmdownloader/internal/tui"
+	"github.com/julienhmmt/helmdownloader/pkg/batch"
 	"github.com/julienhmmt/helmdownloader/pkg/bundle"
 	"github.com/julienhmmt/helmdownloader/pkg/config"
 	"github.com/julienhmmt/helmdownloader/pkg/helm"
@@ -36,6 +37,9 @@ func main() {
 			return
 		case "diff":
 			runDiff(os.Args[2:])
+			return
+		case "batch":
+			runBatch(os.Args[2:])
 			return
 		case "version", "-version", "--version":
 			fmt.Println(version.String())
@@ -66,7 +70,7 @@ func main() {
 	theme := flag.String("theme", "", "TUI theme: auto (default, follow terminal), light, dark, high-contrast, ocean, or matrix")
 	flag.Parse()
 
-	cfg, err := config.Load(*configPath)
+	cfg, err := loadConfig(flag.CommandLine, *configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
 		os.Exit(1)
@@ -80,21 +84,10 @@ func main() {
 	if *tempDir != "" {
 		cfg.TempDir = *tempDir
 	}
-	if cfg.WorkDir != "" {
-		if err := config.EnsureWritableDir(cfg.WorkDir); err != nil {
-			fmt.Fprintf(os.Stderr, "error: work dir is not usable: %v\n", err)
-			os.Exit(1)
-		}
-	} else {
-		resolvedTemp, warn, err := config.FindWritableTempDir(cfg.TempDir)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		if warn != "" {
-			fmt.Fprintln(os.Stderr, warn)
-		}
-		cfg.TempDir = resolvedTemp
+	cfg, err = resolveWorkDir(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
 	}
 	if *concurrency > 0 {
 		cfg.Concurrency = *concurrency
@@ -129,14 +122,7 @@ func main() {
 	if *proxy != "" {
 		cfg.HTTPSProxy = *proxy
 	}
-	// Check environment variables if proxy not set via CLI or config
-	if cfg.HTTPSProxy == "" {
-		if envProxy := os.Getenv("HTTP_PROXY"); envProxy != "" {
-			cfg.HTTPSProxy = envProxy
-		} else if envProxy := os.Getenv("HTTPS_PROXY"); envProxy != "" {
-			cfg.HTTPSProxy = envProxy
-		}
-	}
+	cfg = applyProxyEnv(cfg)
 	if *verbose {
 		cfg.Verbose = true
 		cfg.LogLevel = "debug"
@@ -183,8 +169,123 @@ func main() {
 	}
 }
 
+// loadConfig loads the config at path. When -config was explicitly passed on
+// fs, a missing file is an error (a typo'd path must not silently fall back to
+// defaults); otherwise the default-path probe tolerates a missing file.
+func loadConfig(fs *flag.FlagSet, path string) (config.Config, error) {
+	explicit := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "config" {
+			explicit = true
+		}
+	})
+	if explicit {
+		return config.LoadRequired(path)
+	}
+	return config.Load(path)
+}
+
+// applyProxyEnv fills cfg.HTTPSProxy from HTTP_PROXY/HTTPS_PROXY when it was not
+// set via CLI or config, returning the updated copy.
+func applyProxyEnv(cfg config.Config) config.Config {
+	if cfg.HTTPSProxy != "" {
+		return cfg
+	}
+	if envProxy := os.Getenv("HTTP_PROXY"); envProxy != "" {
+		cfg.HTTPSProxy = envProxy
+	} else if envProxy := os.Getenv("HTTPS_PROXY"); envProxy != "" {
+		cfg.HTTPSProxy = envProxy
+	}
+	return cfg
+}
+
+// resolveWorkDir validates the configured work dir (creating it if needed), or,
+// when none is set, resolves a writable base for temporary work dirs — the same
+// preflight the interactive path uses, so batch behaves identically. Any
+// fallback warning is printed to stderr; the updated copy is returned.
+func resolveWorkDir(cfg config.Config) (config.Config, error) {
+	if cfg.WorkDir != "" {
+		if err := config.EnsureWritableDir(cfg.WorkDir); err != nil {
+			return cfg, fmt.Errorf("work dir is not usable: %w", err)
+		}
+		return cfg, nil
+	}
+	resolvedTemp, warn, err := config.FindWritableTempDir(cfg.TempDir)
+	if err != nil {
+		return cfg, err
+	}
+	if warn != "" {
+		fmt.Fprintln(os.Stderr, warn)
+	}
+	cfg.TempDir = resolvedTemp
+	return cfg, nil
+}
+
+// runBatch runs the batch subcommand: `helmdownloader batch [-config path] <list.yaml>`.
+// It downloads every chart in the YAML list headlessly. All settings other than
+// the config path come from the config file (registry prefix, output dir, etc.).
+func runBatch(args []string) {
+	fs := flag.NewFlagSet("batch", flag.ExitOnError)
+	configPath := fs.String("config", config.DefaultPath(), "path to config file")
+	if err := fs.Parse(args); err != nil {
+		os.Exit(2)
+	}
+	rest := fs.Args()
+	if len(rest) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: helmdownloader batch [-config path] <charts.yaml>")
+		os.Exit(2)
+	}
+
+	cfg, err := loadConfig(fs, *configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
+		os.Exit(1)
+	}
+	cfg = applyProxyEnv(cfg)
+	if err := bundle.ValidateCompression(cfg.Compression); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	cfg, err = resolveWorkDir(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	// Fail fast before downloading anything: an unwritable output dir would
+	// otherwise sink every chart at bundle time, after the pulls are done.
+	if err := config.EnsureWritableDir(cfg.OutputDir); err != nil {
+		fmt.Fprintf(os.Stderr, "error: output dir is not usable: %v\n", err)
+		os.Exit(1)
+	}
+	logger := createLogger(cfg)
+
+	data, err := os.ReadFile(rest[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: read chart list: %v\n", err)
+		os.Exit(1)
+	}
+	refs, err := batch.ParseList(data)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	ctx := context.Background()
+	if err := helm.New(cfg.HelmBin, cfg.HTTPSProxy, logger).Check(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	if err := batch.Run(ctx, cfg, logger, refs, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "batch: %v\n", err)
+		os.Exit(1)
+	}
+}
+
 func createLogger(cfg config.Config) *log.Logger {
-	if !cfg.Verbose {
+	// verbose is the primary switch; an explicit log_level: debug in the config
+	// also enables logging, so the config-only batch path can turn on logs
+	// without a -v flag (info stays gated so default runs write no log file).
+	if !cfg.Verbose && cfg.LogLevel != "debug" {
 		return log.Discard()
 	}
 	level := parseLogLevel(cfg.LogLevel)

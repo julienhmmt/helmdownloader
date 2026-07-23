@@ -156,6 +156,16 @@ func ThemeIsForced(name string) bool {
 	return NormalizeTheme(name) != ThemeAuto
 }
 
+// LoadRequired is Load, but a missing file is an error. Use it when the user
+// explicitly named a config path (e.g. -config /path): silently falling back to
+// defaults would hide a typo'd path from an unattended run.
+func LoadRequired(path string) (Config, error) {
+	if _, err := os.Stat(path); err != nil {
+		return Default(), fmt.Errorf("config file %q: %w", path, err)
+	}
+	return Load(path)
+}
+
 // Load reads configuration from path, falling back to defaults for any
 // unset field. A missing file is not an error: defaults are returned.
 func Load(path string) (Config, error) {

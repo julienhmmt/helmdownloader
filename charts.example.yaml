@@ -1,0 +1,10 @@
+# Example batch list for: helmdownloader batch charts.yaml
+#
+# Each entry names an ArtifactHub chart as "repo/name". The version is optional
+# — omit it to take the latest published version. Every other setting (registry
+# prefix, output dir, platform, concurrency, compression, proxy, resume, …) is
+# read from the config file; see config.example.yaml.
+charts:
+  - chart: ceph-csi/ceph-csi-cephfs
+    version: 3.16.2
+  - chart: argo/argo-cd

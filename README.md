@@ -24,27 +24,27 @@ Run `helmdownloader version` to print the binary identity (release builds inject
 
 ### Screenshots
 
-**Search**
+Search:
 
 ![Search chart](img/helmdownload-0.3.0-1-search-chart.png)
 
-**Results**
+Results:
 
 ![List charts](img/helmdownload-0.3.0-2-list-charts.png)
 
-**Versions**
+Versions:
 
 ![Version picker](img/helmdownload-0.3.0-3-version-picker.png)
 
-**Review images**
+Review images:
 
 ![Image selector](img/helmdownload-0.3.0-4-image-selector.png)
 
-**Download**
+Download:
 
 ![Downloading images](img/helmdownload-0.3.0-5-downloading-images.png)
 
-**Done**
+Done:
 
 ![Bundle created](img/helmdownload-0.3.0-6-bundle-created.png)
 
@@ -88,22 +88,22 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 
 | Screen | Keys | Description |
 | ------ | ---- | ------------ |
-| **Search** | `Enter` to search, `Ctrl+T` themes, `Esc` to quit | Type a chart name to search ArtifactHub |
-| **Results** | `Enter` select, `/` fuzzy, `s` sort field, `o` sort dir, `f` field, `F` value, `Tab` cycle values, `Ctrl+T` themes, `Esc` back | Browse matching charts; official/deprecated badges on title; meta line shows stars, repo, publisher, app |
-| **Filter** | `Enter` apply, `Tab` cycle values, `Ctrl+T` themes, `Esc` cancel | Type a substring to filter by author or company |
-| **Versions** | `Enter` to select, `/` to filter, `Ctrl+T` themes, `Esc` to back | Pick a chart version |
-| **Review** | `Space` toggle, `a` add, `d` delete, `j`/`k` move, `PgUp`/`PgDn` (or `Ctrl+u`/`Ctrl+d`) page, `g`/`G` jump, `Enter` download, `Ctrl+T` themes, `Esc` back | Review auto-discovered images; long lists are windowed |
-| **Add Image** | `Enter` confirm, `Ctrl+T` themes, `Esc` cancel | Manually add an image reference |
-| **Download** | `Esc` cancel (back to review or partial results), `Ctrl+T` themes, `Ctrl+C` quit | Pulls images; partial successes are kept |
-| **Done** | `n` new bundle, `Ctrl+T` themes, `q` quit | Path, image counts, size, and next steps (`verify` / extract) |
-| **Theme** | `j`/`k` move, `1`–`6` jump, `Enter` apply, `Esc` cancel | Pick a palette with live preview (`Ctrl+T` from most screens) |
+| Search | `Enter` to search, `Ctrl+T` themes, `Esc` to quit | Type a chart name to search ArtifactHub |
+| Results | `Enter` select, `/` fuzzy, `s` sort field, `o` sort dir, `f` field, `F` value, `Tab` cycle values, `Ctrl+T` themes, `Esc` back | Browse matching charts; official/deprecated badges on title; meta line shows stars, repo, publisher, app |
+| Filter | `Enter` apply, `Tab` cycle values, `Ctrl+T` themes, `Esc` cancel | Type a substring to filter by author or company |
+| Versions | `Enter` to select, `/` to filter, `Ctrl+T` themes, `Esc` to back | Pick a chart version |
+| Review | `Space` toggle, `a` add, `d` delete, `j`/`k` move, `PgUp`/`PgDn` (or `Ctrl+u`/`Ctrl+d`) page, `g`/`G` jump, `Enter` download, `Ctrl+T` themes, `Esc` back | Review auto-discovered images; long lists are windowed |
+| Add Image | `Enter` confirm, `Ctrl+T` themes, `Esc` cancel | Manually add an image reference |
+| Download | `Esc` cancel (back to review or partial results), `Ctrl+T` themes, `Ctrl+C` quit | Pulls images; partial successes are kept |
+| Done | `n` new bundle, `Ctrl+T` themes, `q` quit | Path, image counts, size, and next steps (`verify` / extract) |
+| Theme | `j`/`k` move, `1`–`6` jump, `Enter` apply, `Esc` cancel | Pick a palette with live preview (`Ctrl+T` from most screens) |
 
 ### Sorting and Filtering Results
 
 The results screen has two independent ways to narrow a long list of charts:
 
-- **`/` fuzzy filter** — the built-in list filter, matching against chart name, repo, author, and organization.
-- **Structured sort/filter** — driven by ArtifactHub metadata, shown on the status line above the footer:
+- `/` fuzzy filter — the built-in list filter, matching against chart name, repo, author, and organization.
+- Structured sort/filter — driven by ArtifactHub metadata, shown on the status line above the footer:
   - `s` cycles the sort field: **stars → name → updated → stars**.
   - `o` toggles the sort direction (`↑` ascending / `↓` descending). Default is **stars, descending**.
   - `f` cycles the filter field: **off → author → company → off**.
@@ -262,6 +262,44 @@ Checks bundle integrity without contacting any registry: re-hashes every file li
 ```
 
 Compares the image sets of two bundles by source reference and pinned digest, printing `+` added, `-` removed, and `~` changed (with old → new digest). Use this to see exactly what to re-mirror when updating a chart version in an airgapped environment.
+
+#### batch
+
+```bash
+./helmdownloader batch charts.yaml
+./helmdownloader batch -config /path/to/config.yaml charts.yaml
+```
+
+Downloads a whole list of charts headlessly — no TUI — so helmdownloader can run
+unattended (CI, cron). Give it a YAML list of ArtifactHub `repo/name` charts:
+
+```yaml
+charts:
+  - chart: bitnami/nginx
+    version: 15.1.0          # optional; omit for the latest published version
+  - chart: prometheus-community/kube-prometheus-stack
+```
+
+For each chart it resolves the version, pulls and renders the chart, downloads
+**every** discovered image (headless mode has no interactive image review), and
+writes a bundle — the same pipeline the TUI drives. All other settings
+(registry prefix, output dir, platform, concurrency, compression, proxy,
+`resume`, `registry_auth`, …) come from the [config file](#configuration-file);
+only `-config` is accepted as a flag.
+
+Output is one line per chart plus a final summary:
+
+```text
+[1/2] bitnami/nginx@15.1.0 ... ok -> archives/nginx-15.1.0-bundle.tar.gz
+[2/2] prometheus-community/kube-prometheus-stack ... ok -> archives/kube-prometheus-stack-77.11.0-bundle.tar.gz
+2/2 chart(s) succeeded
+```
+
+A single chart failure is reported (`FAILED: <reason>`) and the batch continues;
+if a chart's images partially fail, the bundle still ships the images that
+succeeded and the line notes how many failed. Exit code is 0 only when every
+chart succeeded, non-zero otherwise — so CI fails loudly. See
+[`charts.example.yaml`](./charts.example.yaml) for a starting point.
 
 ## Bundle Format
 

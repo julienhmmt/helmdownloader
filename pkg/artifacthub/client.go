@@ -106,20 +106,29 @@ func (c *Client) Search(ctx context.Context, query string, limit int) ([]Package
 // Versions returns every published version of the chart identified by
 // repoName/name, newest first.
 func (c *Client) Versions(ctx context.Context, repoName, name string) ([]Version, error) {
-	c.logger.Infof("fetching versions for %s/%s", repoName, name)
+	_, versions, err := c.Detail(ctx, repoName, name)
+	return versions, err
+}
+
+// Detail fetches the chart identified by repoName/name and returns its Package
+// (including the repository URL needed to pull it) together with every published
+// version. Package.Version is the latest published version. It powers headless
+// resolution where a chart is named but not searched for interactively.
+func (c *Client) Detail(ctx context.Context, repoName, name string) (Package, []Version, error) {
+	c.logger.Infof("fetching detail for %s/%s", repoName, name)
 	endpoint := fmt.Sprintf("%s/api/v1/packages/helm/%s/%s",
 		c.baseURL, url.PathEscape(repoName), url.PathEscape(name))
 	c.logger.Debugf("GET %s", endpoint)
 	var payload detailResponse
 	if err := c.getJSON(ctx, endpoint, &payload); err != nil {
-		return nil, err
+		return Package{}, nil, err
 	}
 	versions := make([]Version, 0, len(payload.AvailableVersions))
 	for _, raw := range payload.AvailableVersions {
 		versions = append(versions, raw.toVersion())
 	}
 	c.logger.Infof("found %d versions", len(versions))
-	return versions, nil
+	return payload.toPackage(), versions, nil
 }
 
 // getJSON performs a GET request and decodes the JSON body into out.
@@ -187,6 +196,7 @@ func (r rawPackage) toPackage() Package {
 }
 
 type detailResponse struct {
+	rawPackage
 	AvailableVersions []rawVersion `json:"available_versions"`
 }
 
