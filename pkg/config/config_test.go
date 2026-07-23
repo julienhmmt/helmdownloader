@@ -140,6 +140,19 @@ func TestLoad_TempDirFromYAML(t *testing.T) {
 	assert.Equal(t, "/custom/tmp", cfg.TempDir)
 }
 
+func TestLoadRequired_MissingFileErrors(t *testing.T) {
+	_, err := config.LoadRequired(filepath.Join(t.TempDir(), "nope.yaml"))
+	assert.Error(t, err)
+}
+
+func TestLoadRequired_ExistingFileLoads(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("registry_prefix: r.example.com\n"), 0o644))
+	cfg, err := config.LoadRequired(path)
+	require.NoError(t, err)
+	assert.Equal(t, "r.example.com", cfg.RegistryPrefix)
+}
+
 func TestValidateTheme(t *testing.T) {
 	assert.NoError(t, config.ValidateTheme(""))
 	assert.NoError(t, config.ValidateTheme("auto"))

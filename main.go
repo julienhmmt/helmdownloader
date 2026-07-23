@@ -70,7 +70,7 @@ func main() {
 	theme := flag.String("theme", "", "TUI theme: auto (default, follow terminal), light, dark, high-contrast, ocean, or matrix")
 	flag.Parse()
 
-	cfg, err := config.Load(*configPath)
+	cfg, err := loadConfig(flag.CommandLine, *configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
 		os.Exit(1)
@@ -84,21 +84,10 @@ func main() {
 	if *tempDir != "" {
 		cfg.TempDir = *tempDir
 	}
-	if cfg.WorkDir != "" {
-		if err := config.EnsureWritableDir(cfg.WorkDir); err != nil {
-			fmt.Fprintf(os.Stderr, "error: work dir is not usable: %v\n", err)
-			os.Exit(1)
-		}
-	} else {
-		resolvedTemp, warn, err := config.FindWritableTempDir(cfg.TempDir)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		if warn != "" {
-			fmt.Fprintln(os.Stderr, warn)
-		}
-		cfg.TempDir = resolvedTemp
+	cfg, err = resolveWorkDir(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
 	}
 	if *concurrency > 0 {
 		cfg.Concurrency = *concurrency
@@ -180,6 +169,22 @@ func main() {
 	}
 }
 
+// loadConfig loads the config at path. When -config was explicitly passed on
+// fs, a missing file is an error (a typo'd path must not silently fall back to
+// defaults); otherwise the default-path probe tolerates a missing file.
+func loadConfig(fs *flag.FlagSet, path string) (config.Config, error) {
+	explicit := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "config" {
+			explicit = true
+		}
+	})
+	if explicit {
+		return config.LoadRequired(path)
+	}
+	return config.Load(path)
+}
+
 // applyProxyEnv fills cfg.HTTPSProxy from HTTP_PROXY/HTTPS_PROXY when it was not
 // set via CLI or config, returning the updated copy.
 func applyProxyEnv(cfg config.Config) config.Config {
@@ -192,6 +197,28 @@ func applyProxyEnv(cfg config.Config) config.Config {
 		cfg.HTTPSProxy = envProxy
 	}
 	return cfg
+}
+
+// resolveWorkDir validates the configured work dir (creating it if needed), or,
+// when none is set, resolves a writable base for temporary work dirs — the same
+// preflight the interactive path uses, so batch behaves identically. Any
+// fallback warning is printed to stderr; the updated copy is returned.
+func resolveWorkDir(cfg config.Config) (config.Config, error) {
+	if cfg.WorkDir != "" {
+		if err := config.EnsureWritableDir(cfg.WorkDir); err != nil {
+			return cfg, fmt.Errorf("work dir is not usable: %w", err)
+		}
+		return cfg, nil
+	}
+	resolvedTemp, warn, err := config.FindWritableTempDir(cfg.TempDir)
+	if err != nil {
+		return cfg, err
+	}
+	if warn != "" {
+		fmt.Fprintln(os.Stderr, warn)
+	}
+	cfg.TempDir = resolvedTemp
+	return cfg, nil
 }
 
 // runBatch runs the batch subcommand: `helmdownloader batch [-config path] <list.yaml>`.
@@ -209,7 +236,7 @@ func runBatch(args []string) {
 		os.Exit(2)
 	}
 
-	cfg, err := config.Load(*configPath)
+	cfg, err := loadConfig(fs, *configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
 		os.Exit(1)
@@ -217,6 +244,17 @@ func runBatch(args []string) {
 	cfg = applyProxyEnv(cfg)
 	if err := bundle.ValidateCompression(cfg.Compression); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	cfg, err = resolveWorkDir(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	// Fail fast before downloading anything: an unwritable output dir would
+	// otherwise sink every chart at bundle time, after the pulls are done.
+	if err := config.EnsureWritableDir(cfg.OutputDir); err != nil {
+		fmt.Fprintf(os.Stderr, "error: output dir is not usable: %v\n", err)
 		os.Exit(1)
 	}
 	logger := createLogger(cfg)
