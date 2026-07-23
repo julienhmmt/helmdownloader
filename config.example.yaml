@@ -175,8 +175,9 @@ set_values: []
 export_images: ""
 # Example: export_images: "images.json"
 
-# At download time, read an approved image list (JSON) from this path and
-# override the discovered/selected set. Invalid refs fail closed before pull.
+# When the Review screen opens, read an approved image list (JSON) from this
+# path and override the discovered set (you can still toggle/edit before Enter).
+# Invalid refs fail closed when entering Review.
 # JSON shape: [{"ref": "quay.io/argoproj/argocd:v3.2.6", "selected": true}, ...]
 # CLI: -import-images
 # Default: "" (disabled)

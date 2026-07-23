@@ -44,8 +44,9 @@ func exportImages(path string, imgs []images.Image) error {
 }
 
 // importImages reads an approved image list from path and returns it as
-// []images.Image. A missing path (cfg.ImportImages == "") returns nil and
-// no error, signaling "no import, use the discovered list as-is".
+// []images.Image. Called once when entering Review (preparedMsg). A missing
+// path (cfg.ImportImages == "") returns nil and no error, signaling "no
+// import, use the discovered list as-is".
 func importImages(path string) ([]images.Image, error) {
 	if path == "" {
 		return nil, nil

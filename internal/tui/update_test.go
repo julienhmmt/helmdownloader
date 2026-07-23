@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -12,6 +14,7 @@ import (
 	"github.com/julienhmmt/helmdownloader/pkg/config"
 	"github.com/julienhmmt/helmdownloader/pkg/images"
 	"github.com/julienhmmt/helmdownloader/pkg/log"
+	"github.com/julienhmmt/helmdownloader/pkg/pipeline"
 )
 
 // newResultsModel returns a model on the results screen with a known package
@@ -255,6 +258,111 @@ func TestHandleBusyKey_EscBundlingIsNoop(t *testing.T) {
 	got, _ := m.handleBusyKey(keyPress("esc"))
 	m2 := got.(model)
 	assert.Equal(t, stateBundling, m2.state)
+}
+
+func TestHandleReviewKey_ChartOnlyEnterBundles(t *testing.T) {
+	// A CRD chart discovers no images: enter must skip download and go straight
+	// to bundling instead of demanding an image selection.
+	m := newTestModel()
+	m.state = stateReview
+	m.selectedPkg = artifacthub.Package{Name: "crd"}
+	m.selectedVersion = "1.0.0"
+	m.reviewImages = nil
+	got, cmd := m.handleReviewKey(keyPress("enter"))
+	m2 := got.(model)
+	assert.Equal(t, stateBundling, m2.state)
+	assert.NotNil(t, cmd)
+	assert.Empty(t, m2.status)
+}
+
+func TestHandleReviewKey_ChartOnlyDeprecatedRequiresSecondEnter(t *testing.T) {
+	m := newTestModel()
+	m.state = stateReview
+	m.selectedPkg = artifacthub.Package{Name: "old-crd", Deprecated: true}
+	m.selectedVersion = "1.0.0"
+	m.reviewImages = nil
+	got, cmd := m.handleReviewKey(keyPress("enter"))
+	m2 := got.(model)
+	assert.Equal(t, stateReview, m2.state)
+	assert.True(t, m2.reviewWarnAck)
+	assert.Contains(t, m2.status, "deprecated")
+	assert.Nil(t, cmd)
+	got, cmd = m2.handleReviewKey(keyPress("enter"))
+	m3 := got.(model)
+	assert.Equal(t, stateBundling, m3.state)
+	assert.NotNil(t, cmd)
+}
+
+func TestPreparedMsg_ImportImagesOverridesEmptyDiscovery(t *testing.T) {
+	// A chart with no discovered images must still honour -import-images when
+	// entering review so the operator sees the approved list before download.
+	path := filepath.Join(t.TempDir(), "approved.json")
+	require.NoError(t, os.WriteFile(path, []byte(`[
+		{"ref": "nginx:1.27", "selected": true},
+		{"ref": "redis:7", "selected": false}
+	]`), 0o644))
+	m := newTestModel()
+	m.state = statePreparing
+	m.cfg.ImportImages = path
+	got, cmd := m.Update(preparedMsg{prepared: pipeline.Prepared{Images: nil}})
+	m2 := got.(model)
+	assert.Equal(t, stateReview, m2.state)
+	assert.Nil(t, cmd)
+	assert.Len(t, m2.reviewImages, 2)
+	assert.True(t, m2.reviewImages[0].Selected)
+	assert.False(t, m2.reviewImages[1].Selected)
+	got, cmd = m2.handleReviewKey(keyPress("enter"))
+	m3 := got.(model)
+	assert.Equal(t, stateDownloading, m3.state)
+	assert.NotNil(t, cmd)
+	assert.Equal(t, 1, m3.downTotal)
+}
+
+func TestPreparedMsg_ImportImagesErrorFailsClosed(t *testing.T) {
+	m := newTestModel()
+	m.state = statePreparing
+	m.cfg.ImportImages = filepath.Join(t.TempDir(), "missing.json")
+	got, _ := m.Update(preparedMsg{prepared: pipeline.Prepared{}})
+	m2 := got.(model)
+	assert.Equal(t, stateError, m2.state)
+	assert.Equal(t, "prepare", m2.errStep)
+	assert.Error(t, m2.err)
+}
+
+func TestHandleReviewKey_ImportEditsSurviveWarnAck(t *testing.T) {
+	// After deprecated ack, Enter must not re-import and wipe space/d edits.
+	path := filepath.Join(t.TempDir(), "approved.json")
+	require.NoError(t, os.WriteFile(path, []byte(`[
+		{"ref": "nginx:1.27", "selected": true},
+		{"ref": "redis:7", "selected": true}
+	]`), 0o644))
+	m := newTestModel()
+	m.state = statePreparing
+	m.selectedPkg = artifacthub.Package{Name: "old", Deprecated: true}
+	m.selectedVersion = "1.0.0"
+	m.cfg.ImportImages = path
+	got, _ := m.Update(preparedMsg{prepared: pipeline.Prepared{Images: nil}})
+	m2 := got.(model)
+	require.Equal(t, stateReview, m2.state)
+	require.Len(t, m2.reviewImages, 2)
+	// Deselect nginx before the safety gate.
+	m2.reviewCursor = 0
+	got, _ = m2.handleReviewKey(keyPress("space"))
+	m2 = got.(model)
+	assert.False(t, m2.reviewImages[0].Selected)
+	got, cmd := m2.handleReviewKey(keyPress("enter"))
+	m3 := got.(model)
+	assert.Equal(t, stateReview, m3.state)
+	assert.True(t, m3.reviewWarnAck)
+	assert.Nil(t, cmd)
+	assert.False(t, m3.reviewImages[0].Selected, "toggle must survive warn ack")
+	got, cmd = m3.handleReviewKey(keyPress("enter"))
+	m4 := got.(model)
+	assert.Equal(t, stateDownloading, m4.state)
+	assert.NotNil(t, cmd)
+	assert.Equal(t, 1, m4.downTotal, "only still-selected redis should download")
+	assert.False(t, m4.reviewImages[0].Selected)
+	assert.True(t, m4.reviewImages[1].Selected)
 }
 
 func TestHandleReviewKey_DeprecatedRequiresSecondEnter(t *testing.T) {

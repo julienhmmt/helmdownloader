@@ -160,7 +160,7 @@ func (m model) viewReview() string {
 
 	var rows strings.Builder
 	if len(m.reviewImages) == 0 {
-		rows.WriteString(m.styles.muted.Render("No images discovered. Press 'a' to add one manually."))
+		rows.WriteString(m.styles.muted.Render("No images in the review list. Press enter to bundle the chart alone (e.g. CRDs/manifests), or 'a' to add an image manually."))
 	} else {
 		start, visible := m.reviewViewport()
 		end := start + visible
@@ -209,8 +209,12 @@ func (m model) viewReview() string {
 	meta := m.styles.muted.Render(fmt.Sprintf("prefix %s · platform %s · out %s",
 		m.cfg.RegistryPrefix, m.cfg.Platform, m.cfg.OutputDir))
 	body := lipgloss.JoinVertical(lipgloss.Left, rows.String(), "", meta)
-	return m.screen(title, subtitle, body,
-		"space toggle · a add · d delete · j/k move · pgup/pgdn page · g/G jump · enter download · ctrl+t themes · esc back")
+	// Chart-only chart: "download" is misleading with nothing to pull.
+	help := "space toggle · a add · d delete · j/k move · pgup/pgdn page · g/G jump · enter download · ctrl+t themes · esc back"
+	if len(m.reviewImages) == 0 {
+		help = "enter bundle chart (no images) · a add · ctrl+t themes · esc back"
+	}
+	return m.screen(title, subtitle, body, help)
 }
 
 // viewAddImage renders the manual image entry prompt.
@@ -366,22 +370,40 @@ func (m model) viewDone() string {
 		lines = append(lines, m.styles.muted.Render(sizeHint))
 	}
 	lines = append(lines, "")
-	summary := fmt.Sprintf("%d images", len(m.entries))
-	if len(m.failures) > 0 {
-		summary = fmt.Sprintf("%d images · %d failed (skipped)", len(m.entries), len(m.failures))
-		lines = append(lines, m.styles.errorMsg.Render(summary))
-	} else {
-		lines = append(lines, m.styles.muted.Render(summary))
+	// A chart-only bundle (e.g. a CRD chart) ships no images, so load.sh has
+	// nothing to push — say so and point at the chart instead of load.sh.
+	chartOnly := len(m.entries) == 0 && len(m.failures) == 0
+	switch {
+	case chartOnly:
+		lines = append(lines, m.styles.muted.Render("chart only · no images (CRDs/manifests in the chart)"))
+	case len(m.failures) > 0:
+		lines = append(lines, m.styles.errorMsg.Render(fmt.Sprintf("%d images · %d failed (skipped)", len(m.entries), len(m.failures))))
+	default:
+		lines = append(lines, m.styles.muted.Render(fmt.Sprintf("%d images", len(m.entries))))
+	}
+	extract := bundleExtractCmd(m.bundlePath)
+	next := fmt.Sprintf("  %s && ./load.sh", extract)
+	if chartOnly {
+		next = fmt.Sprintf("  %s   # extract the chart, then helm install", extract)
 	}
 	lines = append(lines,
 		"",
 		m.styles.muted.Render("Next:"),
 		m.styles.muted.Render(fmt.Sprintf("  helmdownloader verify %s", m.bundlePath)),
-		m.styles.muted.Render(fmt.Sprintf("  tar xzf %s && ./load.sh", m.bundlePath)),
+		m.styles.muted.Render(next),
 		"",
 		m.renderHelp("n new bundle · ctrl+t themes · q quit"),
 	)
 	return m.frame(lipgloss.JoinVertical(lipgloss.Left, lines...))
+}
+
+// bundleExtractCmd returns a tar extract command matching the bundle codec
+// (gzip .tar.gz vs zstd .tar.zst).
+func bundleExtractCmd(path string) string {
+	if strings.HasSuffix(path, ".tar.zst") {
+		return fmt.Sprintf("tar --zstd -xf %s", path)
+	}
+	return fmt.Sprintf("tar xzf %s", path)
 }
 
 // bundleSizeHint returns a human-readable size for path, or empty if unavailable.

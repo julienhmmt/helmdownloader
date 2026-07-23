@@ -61,7 +61,7 @@ func main() {
 	logLevel := flag.String("log-level", "", "set log level: silent, info, or debug (default: info)")
 	logFile := flag.String("log-file", "helmdownloader.log", "path for log output")
 	exportImages := flag.String("export-images", "", "write the discovered image list (JSON) to this path after rendering, for security review")
-	importImages := flag.String("import-images", "", "read an approved image list (JSON) from this path at download time, overriding the discovered set")
+	importImages := flag.String("import-images", "", "read an approved image list (JSON) from this path when entering Review, overriding the discovered set")
 	theme := flag.String("theme", "", "TUI theme: auto (default, follow terminal), light, dark, high-contrast, ocean, or matrix")
 	flag.Parse()
 

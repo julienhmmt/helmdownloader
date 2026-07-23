@@ -78,11 +78,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clearStatus()
 		m.state = stateReview
 		m.errStep = ""
+		// Export the discovered set first so -export-images always reflects
+		// chart rendering, even when -import-images will replace the list.
 		if err := exportImages(m.cfg.ExportImages, m.reviewImages); err != nil {
 			m.err = err
 			m.errStep = "prepare"
 			m.state = stateError
 			return m, nil
+		}
+		// Apply an approved list once when entering review so the operator
+		// sees (and can edit) it before download. Re-importing on every Enter
+		// would wipe space/d edits after a deprecated/prerelease ack.
+		if m.cfg.ImportImages != "" {
+			imported, err := importImages(m.cfg.ImportImages)
+			if err != nil {
+				m.err = err
+				m.errStep = "prepare"
+				m.state = stateError
+				return m, nil
+			}
+			if len(imported) > 0 {
+				m.reviewImages = imported
+			}
 		}
 		return m, nil
 	case progressMsg:
@@ -489,6 +506,25 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case "enter":
+		// Chart-only bundle (e.g. a CRD chart with no container images): there is
+		// nothing to select or download, so skip straight to assembling the chart
+		// alone. The deprecated/prerelease confirmation gate still applies.
+		// -import-images is applied once in preparedMsg so empty discovery still
+		// shows an approved list before this path runs.
+		if len(m.reviewImages) == 0 {
+			if warn := m.reviewSafetyWarning(); warn != "" && !m.reviewWarnAck {
+				m.reviewWarnAck = true
+				m.setStatus(warn)
+				return m, nil
+			}
+			m.clearStatus()
+			m.prepared.Images = nil
+			m.entries, m.failures = nil, nil
+			m.state = stateBundling
+			m.errStep = "bundle"
+			return m, tea.Batch(m.spinner.Tick,
+				bundleCmd(m.pipeline, m.prepared, m.selectedPkg, m.selectedVersion, nil))
+		}
 		if m.countSelected() == 0 {
 			m.setStatus("Select at least one image (space), or press a to add one.")
 			return m, nil
@@ -496,24 +532,6 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if warn := m.reviewSafetyWarning(); warn != "" && !m.reviewWarnAck {
 			m.reviewWarnAck = true
 			m.setStatus(warn)
-			return m, nil
-		}
-		// If an approved image list was provided, it overrides the discovered
-		// set: only refs present in the import (and marked Selected) are pulled.
-		if m.cfg.ImportImages != "" {
-			imported, err := importImages(m.cfg.ImportImages)
-			if err != nil {
-				m.err = err
-				m.errStep = "download"
-				m.state = stateError
-				return m, nil
-			}
-			if len(imported) > 0 {
-				m.reviewImages = imported
-			}
-		}
-		if m.countSelected() == 0 {
-			m.setStatus("Select at least one image (space), or press a to add one.")
 			return m, nil
 		}
 		m.clearStatus()

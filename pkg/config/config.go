@@ -88,7 +88,7 @@ type Config struct {
 	// (JSON) after Prepare, so a security team can review it before pulling.
 	ExportImages string `yaml:"export_images"`
 	// ImportImages, when set, is the path to read an approved image list (JSON)
-	// from at download time, overriding the discovered/selected set.
+	// from when entering the Review screen, overriding the discovered set.
 	ImportImages string `yaml:"import_images"`
 	// RegistryAuth, when true, enables authenticated pulls using the default
 	// Docker keychain (reads ~/.docker/config.json or $DOCKER_CONFIG/config.json,

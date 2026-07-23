@@ -13,6 +13,7 @@ Run `helmdownloader version` to print the binary identity (release builds inject
 - **Select**: Choose Helm charts and their versions (official / deprecated badges; stars, repo, publisher, app on each row)
 - **Auto-discover**: Automatically extract all container image references from a rendered chart and its `values.yaml`, including the split `registry`/`repository`/`tag`/`digest` form used by many charts
 - **Review**: Manually add, remove, or toggle individual images before downloading (windowed list for large charts; image refs validated on add)
+- **Chart-only bundles**: Charts that ship no container images (e.g. CRD-only charts) bundle the chart alone — press `Enter` on the empty review screen to skip the download step
 - **Download**: Daemonless image pulling using [go-containerregistry](https://github.com/google/go-containerregistry) (no Docker required); per-image progress; Esc cancels busy work while keeping partial successes
 - **Archive**: Create a single compressed bundle per chart (`.tar.gz` or `.tar.zst`) with chart, values, retagged image tarballs, pinned digests, SPDX SBOM, checksums, and `load.sh`
 - **Integrity**: `verify` and `diff` subcommands; `load.sh` checks `sha256sums.txt` (including itself) before load/push
@@ -145,7 +146,7 @@ The status line reports the active `sort:`, `filter:`, and the count of charts s
 | `-log-level` | `info` | Set log level: `silent`, `info`, or `debug` |
 | `-log-file` | `helmdownloader.log` | Path for log output |
 | `-export-images` | (none) | Write the discovered image list (JSON) to this path after rendering, for security review |
-| `-import-images` | (none) | Read an approved image list (JSON) from this path at download time, overriding the discovered set |
+| `-import-images` | (none) | Read an approved image list (JSON) from this path when entering the Review screen, overriding the discovered set |
 | `-theme` | `auto` | TUI theme: `auto` (follow terminal), `light`, `dark`, `high-contrast`, `ocean`, or `matrix`. Named themes set a matching terminal background. Press `Ctrl+T` in the TUI to open the theme menu |
 
 ### Configuration File
@@ -204,11 +205,11 @@ Use `-export-images` and `-import-images` to review the discovered image list wi
 #    remove untrusted refs, add missing ones).
 
 # 3. Run with -import-images: the approved list overrides the discovered
-#    set at download time.
+#    set when the Review screen opens (you can still toggle/edit before Enter).
 ./helmdownloader -import-images images.json
 ```
 
-Import rejects invalid image references with a non-zero error before download so a bad edit fails closed at load time rather than after pull retries.
+Import rejects invalid image references with a non-zero error when entering Review so a bad edit fails closed at load time rather than after pull retries.
 
 The JSON format is an array of entries:
 
