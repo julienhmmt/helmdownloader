@@ -1,6 +1,6 @@
 module github.com/julienhmmt/helmdownloader
 
-go 1.26
+go 1.26.0
 
 // go1.26.5 patches crypto/tls ECH privacy leak (GO-2026-5856 / CVE-2026-42505)
 // and os.Root symlink escape (CVE-2026-39822). With GOTOOLCHAIN=auto, the go
@@ -16,7 +16,7 @@ require (
 	github.com/klauspost/compress v1.19.2
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/sync v0.22.0
-	golang.org/x/sys v0.47.0
+	golang.org/x/sys v0.48.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
