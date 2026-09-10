@@ -12,7 +12,7 @@ require (
 	charm.land/bubbletea/v2 v2.0.9
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/charmbracelet/x/ansi v0.11.8
-	github.com/google/go-containerregistry v0.22.0
+	github.com/google/go-containerregistry v0.22.1
 	github.com/klauspost/compress v1.19.2
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/sync v0.22.0
