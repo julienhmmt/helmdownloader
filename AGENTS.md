@@ -27,6 +27,7 @@ Module: `github.com/julienhmmt/helmdownloader` · Go **1.26+** · License **AGPL
 | TUI screens / Bubble Tea model-update-view | `/tui` |
 | Config field, CLI flag, defaults | `/config` |
 | Before calling a change done | `/verify-change` |
+| Refresh the project brain (Obsidian vault notes) | `/obsidian-vault` |
 
 ## Commands (Makefile)
 
