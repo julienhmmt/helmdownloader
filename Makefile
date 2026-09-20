@@ -58,3 +58,46 @@ go-clean:
 
 install:
 	go install .
+
+# ---------------------------------------------------------------------------
+# SonarQube (local container, single Go project: helmdownloader)
+# ---------------------------------------------------------------------------
+COMPOSE_SONAR := docker compose -f docker-compose.sonarqube.yml
+
+.PHONY: sonar-up sonar-down sonar-logs sonar-status sonar-bootstrap sonar-coverage sonar-scan sonar-scan-server sonar-query sonar-clean
+
+sonar-up: ## Start the SonarQube server (http://localhost:9000)
+	$(COMPOSE_SONAR) up -d sonarqube
+
+sonar-down: ## Stop the SonarQube server
+	$(COMPOSE_SONAR) down
+
+sonar-logs: ## Follow SonarQube logs
+	$(COMPOSE_SONAR) logs -f sonarqube
+
+sonar-status: ## Check SonarQube server status
+	@docker ps --filter "name=helmdownloader-sonarqube" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+sonar-bootstrap: ## Provision or rotate the SonarQube analysis token
+	@chmod +x tools/sonar-bootstrap.sh
+	@tools/sonar-bootstrap.sh
+	@echo "SonarQube token ready in .sonar/token"
+
+sonar-coverage: ## Generate Go coverage reports for SonarQube
+	@chmod +x tools/sonar-coverage.sh
+	@GO_TEST_FLAGS="$(GO_TEST_FLAGS)" SERVER_DIR="$(SERVER_DIR)" tools/sonar-coverage.sh
+	@echo "Coverage reports ready in .sonar/"
+
+sonar-scan: sonar-coverage ## Run SonarScanner for the Go project (requires sonar-up + sonar-bootstrap)
+	@chmod +x tools/sonar-scan.sh
+	@tools/sonar-scan.sh
+
+sonar-scan-server: ## Scan only the Go project (server short name)
+	@chmod +x tools/sonar-scan.sh
+	@tools/sonar-scan.sh server
+
+sonar-query: ## Query SonarQube results (usage: make sonar-query CMD="summary")
+	@python3 tools/sonar-query.py $(CMD)
+
+sonar-clean: sonar-down ## Stop SonarQube and remove its local data and token
+	rm -rf .sonar
