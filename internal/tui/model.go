@@ -113,9 +113,12 @@ type model struct {
 	// so the download screen can show all concurrent pulls advancing
 	// rather than flapping between refs.
 	imageProgress map[string]imageProgress
-	entries       []bundle.ImageEntry
-	failures      []pipeline.ImageFailure
-	bundlePath    string
+	// cancelArmed tracks the double-esc gate on the download screen: the
+	// first esc arms cancellation, the second actually cancels.
+	cancelArmed bool
+	entries     []bundle.ImageEntry
+	failures    []pipeline.ImageFailure
+	bundlePath  string
 	// sessionBundles accumulates every bundle path created this session. The user
 	// can chain charts ("add another chart" on the done screen); each chart still
 	// produces its own bundle, and the done screen lists them all.

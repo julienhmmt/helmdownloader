@@ -269,6 +269,11 @@ func (m model) handleThemeMenuKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // Bundle has no context, so Esc is a no-op during bundling; ctrl+c still quits.
 func (m model) handleBusyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if msg.String() != "esc" {
+		// Any other key disarms a pending download cancel.
+		if m.cancelArmed {
+			m.cancelArmed = false
+			m.clearStatus()
+		}
 		return m.updateComponents(msg)
 	}
 	switch m.state {
@@ -296,6 +301,13 @@ func (m model) handleBusyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.errStep = ""
 		return m, cleanup
 	case stateDownloading:
+		if !m.cancelArmed {
+			m.cancelArmed = true
+			m.setStatus("Press esc again to cancel the download.")
+			return m, nil
+		}
+		m.cancelArmed = false
+		m.clearStatus()
 		m.cancel()
 		m.ctx, m.cancel = context.WithCancel(context.Background())
 		m.imageProgress = map[string]imageProgress{}
@@ -562,6 +574,7 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.clearStatus()
+		m.cancelArmed = false
 		m.prepared.Images = m.reviewImages
 		refs := selectedRefs(m.reviewImages)
 		m.entries, m.failures = nil, nil
@@ -581,6 +594,8 @@ func (m model) handleDownloadReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 	case "r":
 		refs := failureRefs(m.failures)
 		m.failures = nil
+		m.cancelArmed = false
+		m.clearStatus()
 		m.imageProgress = map[string]imageProgress{}
 		m.state = stateDownloading
 		m.errStep = "download"

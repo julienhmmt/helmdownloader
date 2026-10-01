@@ -99,7 +99,7 @@ After you quit, a plain-text summary stays in the terminal scrollback for every 
 | Review | `Space` toggle, `A` select all, `N` deselect all, `i` invert, `a` add, `d` delete, `e` save review, `j`/`k` move, `PgUp`/`PgDn` (or `Ctrl+u`/`Ctrl+d`) page, `g`/`G` jump, `Enter` download, `Ctrl+T` themes, `Esc` back | Review auto-discovered images; long lists are windowed |
 | Add Image | `Enter` confirm, `Ctrl+T` themes, `Esc` cancel | Manually add an image reference |
 | Save Review | `Enter` save (again to confirm overwrite), `Ctrl+T` themes, `Esc` cancel | Choose a JSON path for the current reviewed image list |
-| Download | `Esc` cancel (back to review or partial results), `Ctrl+T` themes, `Ctrl+C` quit | Pulls images; partial successes are kept |
+| Download | `Esc` twice to cancel (back to review or partial results), `Ctrl+T` themes, `Ctrl+C` quit | Pulls images; partial successes are kept |
 | Done | `a` add another chart, `n` new session, `Ctrl+T` themes, `q` quit | Path, image counts, size, and next steps (`verify` / extract). `a` chains another chart into the same session; each chart still ships its own bundle and all session bundles are listed here |
 | Theme | `j`/`k` move, `1`–`6` jump, `Enter` apply, `Esc` cancel | Pick a palette with live preview (`Ctrl+T` from most screens) |
 

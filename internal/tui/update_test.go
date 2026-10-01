@@ -321,14 +321,29 @@ func TestDownloadDoneMsg_StaleWhileReviewIgnored(t *testing.T) {
 	assert.Nil(t, cmd)
 }
 
+func TestHandleBusyKey_FirstEscArmsDownloadCancel(t *testing.T) {
+	m := newTestModel()
+	m.state = stateDownloading
+	m.errStep = "download"
+	got, _ := m.handleBusyKey(keyPress("esc"))
+	m2 := got.(model)
+	assert.Equal(t, stateDownloading, m2.state)
+	assert.True(t, m2.cancelArmed)
+	assert.Contains(t, m2.status, "esc again")
+}
+
 func TestHandleBusyKey_EscDownloadingReturnsReview(t *testing.T) {
 	m := newTestModel()
 	m.state = stateDownloading
 	m.errStep = "download"
 	got, _ := m.handleBusyKey(keyPress("esc"))
 	m2 := got.(model)
-	assert.Equal(t, stateReview, m2.state)
-	assert.Empty(t, m2.errStep)
+	got, _ = m2.handleBusyKey(keyPress("esc"))
+	m3 := got.(model)
+	assert.Equal(t, stateReview, m3.state)
+	assert.Empty(t, m3.errStep)
+	assert.False(t, m3.cancelArmed)
+	assert.Empty(t, m3.status)
 }
 
 func TestHandleBusyKey_EscDownloadingWithEntriesGoesDownloadReview(t *testing.T) {
@@ -337,7 +352,26 @@ func TestHandleBusyKey_EscDownloadingWithEntriesGoesDownloadReview(t *testing.T)
 	m.entries = []bundle.ImageEntry{{SourceRef: "x:1"}}
 	got, _ := m.handleBusyKey(keyPress("esc"))
 	m2 := got.(model)
-	assert.Equal(t, stateDownloadReview, m2.state)
+	got, _ = m2.handleBusyKey(keyPress("esc"))
+	assert.Equal(t, stateDownloadReview, got.(model).state)
+}
+
+func TestHandleBusyKey_OtherKeyDisarmsDownloadCancel(t *testing.T) {
+	m := newTestModel()
+	m.state = stateDownloading
+	got, _ := m.handleBusyKey(keyPress("esc"))
+	m2 := got.(model)
+	require.True(t, m2.cancelArmed)
+	got, _ = m2.handleBusyKey(keyPress("j"))
+	m3 := got.(model)
+	assert.Equal(t, stateDownloading, m3.state)
+	assert.False(t, m3.cancelArmed)
+	assert.Empty(t, m3.status)
+	// A fresh esc re-arms instead of cancelling.
+	got, _ = m3.handleBusyKey(keyPress("esc"))
+	m4 := got.(model)
+	assert.Equal(t, stateDownloading, m4.state)
+	assert.True(t, m4.cancelArmed)
 }
 
 func TestHandleBusyKey_EscSearchingBackToSearch(t *testing.T) {
