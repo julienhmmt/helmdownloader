@@ -303,9 +303,11 @@ Output is one line per chart plus a final summary:
 ```
 
 A single chart failure is reported (`FAILED: <reason>`) and the batch continues;
-if a chart's images partially fail, the bundle still ships the images that
-succeeded and the line notes how many failed. Exit code is 0 only when every
-chart succeeded, non-zero otherwise — so CI fails loudly. See
+if any of a chart's images fail, the bundle still ships the images that
+succeeded and the line reports `PARTIAL` with the failed count and bundle path.
+The final success count includes only complete charts. Exit code is 0 only when
+every chart and every requested image succeeded, non-zero otherwise, so CI
+rejects incomplete deliveries without losing partial bundles or skipping later charts. See
 [`charts.example.yaml`](./charts.example.yaml) for a starting point.
 
 ## Bundle Format
