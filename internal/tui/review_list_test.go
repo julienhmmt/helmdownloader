@@ -82,6 +82,46 @@ func TestHandleReviewKey_PageDownMovesCursor(t *testing.T) {
 	assert.Greater(t, m2.reviewCursor, 0)
 }
 
+func TestHandleReviewKey_BulkSelection(t *testing.T) {
+	for _, size := range []int{0, 2, 50} {
+		for _, key := range []string{"A", "N"} {
+			t.Run(fmt.Sprintf("size=%d/key=%s", size, key), func(t *testing.T) {
+				var m = newTestModel()
+				defer m.cancel()
+				m.state = stateReview
+				m.height = 20
+				for index := range size {
+					m.reviewImages = append(m.reviewImages, images.Image{Ref: fmt.Sprintf("img-%d:1", index), Selected: index%2 == 0})
+				}
+				m.reviewCursor = max(0, size-1)
+				m.ensureReviewCursorVisible()
+				var cursor = m.reviewCursor
+				var offset = m.reviewOffset
+				var got, cmd = m.handleReviewKey(keyPress(key))
+				var updated = got.(model)
+				assert.Nil(t, cmd)
+				assert.Equal(t, stateReview, updated.state)
+				assert.Equal(t, cursor, updated.reviewCursor)
+				assert.Equal(t, offset, updated.reviewOffset)
+				for _, image := range updated.reviewImages {
+					assert.Equal(t, key == "A", image.Selected)
+				}
+				assert.Contains(t, updated.render(), "save review")
+				if size > 0 {
+					assert.Contains(t, updated.render(), "all")
+					assert.Contains(t, updated.render(), "none")
+				}
+				if size > 0 && key == "N" {
+					got, cmd = updated.handleReviewKey(keyPress("enter"))
+					assert.Nil(t, cmd)
+					assert.Equal(t, stateReview, got.(model).state)
+					assert.Contains(t, got.(model).status, "Select at least one image")
+				}
+			})
+		}
+	}
+}
+
 func TestTruncateMiddle(t *testing.T) {
 	assert.Equal(t, "short", truncateMiddle("short", 20))
 	assert.Equal(t, "…", truncateMiddle("abcdef", 1))

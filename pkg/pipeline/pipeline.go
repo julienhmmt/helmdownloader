@@ -369,13 +369,16 @@ func (p *Pipeline) saveWithRetry(ctx context.Context, srcRef, destRef, tarPath s
 func (p *Pipeline) Bundle(prepared Prepared, pkg artifacthub.Package, version string, entries []bundle.ImageEntry) (string, error) {
 	p.logger.Infof("creating bundle for %s %s with %d images", pkg.Name, version, len(entries))
 	bundlePath, err := bundle.Create(bundle.Spec{
-		ChartName:    pkg.Name,
-		ChartVersion: version,
-		ChartPath:    prepared.ChartPath,
-		Values:       prepared.Values,
-		Images:       entries,
-		OutputDir:    p.cfg.OutputDir,
-		Compression:  p.cfg.Compression,
+		ChartName:      pkg.Name,
+		ChartVersion:   version,
+		ChartPath:      prepared.ChartPath,
+		Values:         prepared.Values,
+		Images:         entries,
+		OutputDir:      p.cfg.OutputDir,
+		Compression:    p.cfg.Compression,
+		Platform:       p.cfg.Platform,
+		RegistryPrefix: p.cfg.RegistryPrefix,
+		MissingImages:  missingImageRefs(prepared.Images, entries),
 	})
 	if err != nil {
 		return "", err
@@ -524,4 +527,19 @@ func tarballName(ref string) string {
 	safe = strings.Trim(safe, "_")
 	sum := sha256.Sum256([]byte(ref))
 	return fmt.Sprintf("%s-%x.tar", safe, sum[:4])
+}
+
+func missingImageRefs(requested []images.Image, entries []bundle.ImageEntry) []string {
+	var included = make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		included[entry.SourceRef] = true
+	}
+	var missing []string
+	for _, image := range requested {
+		if image.Selected && !included[image.Ref] {
+			missing = append(missing, image.Ref)
+			included[image.Ref] = true
+		}
+	}
+	return missing
 }

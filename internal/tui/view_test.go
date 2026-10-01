@@ -255,6 +255,20 @@ func TestViewDone_ShowsVerifyAndImageCount(t *testing.T) {
 	assert.Contains(t, out, "tar xzf archives/argo-cd-1.0.0-bundle.tar.gz")
 }
 
+func TestViewDone_ListsSessionPaths(t *testing.T) {
+	var m = newTestModel()
+	defer m.cancel()
+	m.state = stateDone
+	m.bundlePath = "b.tar.gz"
+	m.sessionBundles = []sessionBundle{{path: "a.tar.gz", included: 1, missing: 2}, {path: "b.tar.gz", included: 3}}
+	var output = m.render()
+	assert.Contains(t, output, "Session bundles (2):")
+	assert.Contains(t, output, "a.tar.gz")
+	assert.Contains(t, output, "b.tar.gz")
+	assert.Contains(t, output, "add another chart")
+	assert.Contains(t, output, "new session")
+}
+
 func TestViewDone_ChartOnlyZstdExtractHint(t *testing.T) {
 	m := newTestModel()
 	m.state = stateDone

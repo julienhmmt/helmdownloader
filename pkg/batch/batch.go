@@ -53,16 +53,16 @@ func run(ctx context.Context, client resolver, pl runner, refs []ChartRef, out i
 			fmt.Fprintf(out, "FAILED: %v\n", err)
 			continue
 		}
-		succeeded++
 		if imgFailed > 0 {
-			fmt.Fprintf(out, "ok (%d image(s) failed) -> %s\n", imgFailed, path)
+			fmt.Fprintf(out, "PARTIAL (%d image(s) failed) -> %s\n", imgFailed, path)
 		} else {
+			succeeded++
 			fmt.Fprintf(out, "ok -> %s\n", path)
 		}
 	}
 	fmt.Fprintf(out, "%d/%d chart(s) succeeded\n", succeeded, total)
 	if succeeded < total {
-		return fmt.Errorf("%d of %d chart(s) failed", total-succeeded, total)
+		return fmt.Errorf("%d of %d chart(s) failed or incomplete", total-succeeded, total)
 	}
 	return nil
 }

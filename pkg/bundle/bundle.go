@@ -66,7 +66,10 @@ type Spec struct {
 	OutputDir string
 	// Compression selects the archive codec: "gzip" (default, .tar.gz) or
 	// "zstd" (.tar.zst), which gives a smaller bundle for airgap transfer.
-	Compression string
+	Compression    string
+	Platform       string
+	RegistryPrefix string
+	MissingImages  []string
 }
 
 // Create writes the bundle archive and returns its path. The archive contains:
@@ -167,6 +170,10 @@ func Create(spec Spec) (path string, err error) {
 		return "", err
 	}
 	checksums.add(sum, "load.sh")
+	if sum, err = writeBytes(tarWriter, "HOWTO.txt", []byte(buildHandoff(spec, outName, chartName))); err != nil {
+		return "", err
+	}
+	checksums.add(sum, "HOWTO.txt")
 	if _, err = writeBytes(tarWriter, "sha256sums.txt", []byte(checksums.String())); err != nil {
 		return "", err
 	}

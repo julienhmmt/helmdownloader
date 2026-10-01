@@ -2,7 +2,6 @@ package bundle
 
 import (
 	"archive/tar"
-	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -30,12 +29,10 @@ func writeTemp(t *testing.T, dir, name, content string) string {
 // name to its tar mode.
 func readArchive(t *testing.T, path string) (map[string]string, map[string]int64) {
 	t.Helper()
-	f, err := os.Open(path)
+	var stream, closeStream, err = openBundleStream(path)
 	require.NoError(t, err)
-	defer func() { assert.NoError(t, f.Close()) }()
-	gz, err := gzip.NewReader(f)
-	require.NoError(t, err)
-	tr := tar.NewReader(gz)
+	defer closeStream()
+	var tr = tar.NewReader(stream)
 	contents := map[string]string{}
 	modes := map[string]int64{}
 	for {
@@ -50,6 +47,28 @@ func readArchive(t *testing.T, path string) (map[string]string, map[string]int64
 		modes[hdr.Name] = hdr.Mode
 	}
 	return contents, modes
+}
+
+func TestCreate_HandoffIntegrity(t *testing.T) {
+	for _, codec := range []string{"gzip", "zstd"} {
+		t.Run(codec, func(t *testing.T) {
+			var work = t.TempDir()
+			var spec = Spec{ChartName: "app", ChartVersion: "1", ChartPath: writeTemp(t, work, "app.tgz", "chart"), OutputDir: t.TempDir(), Compression: codec, Platform: "linux/amd64", MissingImages: []string{"redis:7"}}
+			var path, err = Create(spec)
+			require.NoError(t, err)
+			var contents, modes = readArchive(t, path)
+			require.Contains(t, contents, "HOWTO.txt")
+			assert.Equal(t, int64(0o644), modes["HOWTO.txt"])
+			assert.Contains(t, contents["HOWTO.txt"], "PARTIAL")
+			assert.Contains(t, contents["HOWTO.txt"], "redis:7")
+			var sum = sha256.Sum256([]byte(contents["HOWTO.txt"]))
+			assert.Contains(t, contents["sha256sums.txt"], hex.EncodeToString(sum[:])+"  HOWTO.txt")
+			require.NoError(t, Verify(path))
+			contents["HOWTO.txt"] = "tampered instructions"
+			var tampered = writeGzipTar(t, t.TempDir(), "tampered.tar.gz", contents)
+			assert.ErrorContains(t, Verify(tampered), "HOWTO.txt")
+		})
+	}
 }
 
 func TestCreate_WritesAllEntries(t *testing.T) {

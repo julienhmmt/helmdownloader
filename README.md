@@ -86,6 +86,8 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 
 To bundle several charts in one sitting, press `a` (add another chart) on the Done screen: it returns to search while keeping the list of bundles already created. Each chart produces its own bundle. For fully headless multi-chart runs (a YAML list, no TUI), use the [`batch`](#batch) subcommand instead.
 
+After you quit, a plain-text summary stays in the terminal scrollback for every bundle created in the current session. It lists each path, available size, **COMPLETE** or **PARTIAL** status, included/missing image counts, and shell-quoted `verify` and extraction commands matching gzip or zstd. Chart-only bundles are labelled explicitly and show chart extraction guidance instead of image-loading instructions. Pressing `a` retains earlier bundles and their status; `n` starts a new session and clears this history. Quitting a session with no completed bundles prints no summary.
+
 ### Screens
 
 | Screen | Keys | Description |
@@ -94,8 +96,9 @@ To bundle several charts in one sitting, press `a` (add another chart) on the Do
 | Results | `Enter` select, `/` fuzzy, `s` sort field, `o` sort dir, `f` field, `F` value, `Tab` cycle values, `Ctrl+T` themes, `Esc` back | Browse matching charts; official/deprecated badges on title; meta line shows stars, repo, publisher, app |
 | Filter | `Enter` apply, `Tab` cycle values, `Ctrl+T` themes, `Esc` cancel | Type a substring to filter by author or company |
 | Versions | `Enter` to select, `/` to filter, `Ctrl+T` themes, `Esc` to back | Pick a chart version |
-| Review | `Space` toggle, `a` add, `d` delete, `j`/`k` move, `PgUp`/`PgDn` (or `Ctrl+u`/`Ctrl+d`) page, `g`/`G` jump, `Enter` download, `Ctrl+T` themes, `Esc` back | Review auto-discovered images; long lists are windowed |
+| Review | `Space` toggle, `A` select all, `N` deselect all, `a` add, `d` delete, `e` save review, `j`/`k` move, `PgUp`/`PgDn` (or `Ctrl+u`/`Ctrl+d`) page, `g`/`G` jump, `Enter` download, `Ctrl+T` themes, `Esc` back | Review auto-discovered images; long lists are windowed |
 | Add Image | `Enter` confirm, `Ctrl+T` themes, `Esc` cancel | Manually add an image reference |
+| Save Review | `Enter` save (again to confirm overwrite), `Ctrl+T` themes, `Esc` cancel | Choose a JSON path for the current reviewed image list |
 | Download | `Esc` cancel (back to review or partial results), `Ctrl+T` themes, `Ctrl+C` quit | Pulls images; partial successes are kept |
 | Done | `a` add another chart, `n` new session, `Ctrl+T` themes, `q` quit | Path, image counts, size, and next steps (`verify` / extract). `a` chains another chart into the same session; each chart still ships its own bundle and all session bundles are listed here |
 | Theme | `j`/`k` move, `1`–`6` jump, `Enter` apply, `Esc` cancel | Pick a palette with live preview (`Ctrl+T` from most screens) |
@@ -213,6 +216,8 @@ Use `-export-images` and `-import-images` to review the discovered image list wi
 ./helmdownloader -import-images images.json
 ```
 
+Press `e` on Review to save your **current** image list, including toggles, additions, and deletions. Choose a path (prefilled from `-export-images`, or `reviewed-images.json`), then press `Enter`. If the file exists, a second `Enter` confirms replacement; `Esc` cancels without changing it. Save errors stay inline so you can correct the path and retry. This action uses the same importable JSON format as the automatic `-export-images` discovery export, which still runs before any review edits. An explicitly imported empty list (`[]`) stays empty, allowing a saved chart-only review to be restored without reselecting discovered images.
+
 Import rejects invalid image references with a non-zero error when entering Review so a bad edit fails closed at load time rather than after pull retries.
 
 The JSON format is an array of entries:
@@ -298,9 +303,11 @@ Output is one line per chart plus a final summary:
 ```
 
 A single chart failure is reported (`FAILED: <reason>`) and the batch continues;
-if a chart's images partially fail, the bundle still ships the images that
-succeeded and the line notes how many failed. Exit code is 0 only when every
-chart succeeded, non-zero otherwise — so CI fails loudly. See
+if any of a chart's images fail, the bundle still ships the images that
+succeeded and the line reports `PARTIAL` with the failed count and bundle path.
+The final success count includes only complete charts. Exit code is 0 only when
+every chart and every requested image succeeded, non-zero otherwise, so CI
+rejects incomplete deliveries without losing partial bundles or skipping later charts. See
 [`charts.example.yaml`](./charts.example.yaml) for a starting point.
 
 ## Bundle Format
@@ -314,13 +321,18 @@ images/
   <image1>.tar            # retagged image tarball
   <image2>.tar
 images.txt                # manifest: source_ref  dest_ref  tar_name  digest
-manifest.json             # provenance: tool, toolVersion, chart, codec, images + digests
+manifest.json             # provenance: tool, toolVersion, chart, codec, platform, registry prefix, status, missing images + digests
 sbom.spdx.json            # SPDX 2.3 SBOM: chart + images with pinned digests
 sha256sums.txt            # sha256 of every payload file including load.sh (sha256sum -c format)
 load.sh                   # verifies checksums, then loads and pushes every image
+HOWTO.txt                 # checksummed handoff instructions and completeness warning
 ```
 
 The `images.txt` manifest maps original references to their retagged counterparts and records the resolved manifest digest (`sha256:...`, or `-` when the registry reported none) of exactly what was bundled, making it easy to script and verify the import side on airgapped infrastructure.
+
+Every bundle includes a checksummed `HOWTO.txt` with chart/version, platform, registry prefix, codec-matched verification/extraction commands, and Docker/Podman loading guidance. Chart-only bundles omit image-loading instructions. Custom values and `-set` overrides used for discovery are **not bundled** as deployment values; supply those separately and set chart image references to the destinations in `images.txt` before installation.
+
+`manifest.json` records `status` (`complete` or `partial`) and, for partial bundles, `missingImages` containing selected/requested references not included in the archive. `HOWTO.txt` prominently lists those missing references. Completeness is relative to the reviewed selection (or every discovered image in batch), not a guarantee that best-effort discovery found every possible image. `verify` checks integrity, not completeness: an intact partial bundle still verifies successfully.
 
 An SPDX 2.3 JSON SBOM (`sbom.spdx.json`) lists the chart and every image with its pinned manifest digest, for ingestion into standard SBOM tooling on the airgapped side.
 

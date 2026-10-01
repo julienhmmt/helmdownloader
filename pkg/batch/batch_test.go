@@ -32,7 +32,8 @@ func (f fakeResolver) Detail(_ context.Context, _, name string) (artifacthub.Pac
 type fakeRunner struct {
 	preparedVersions []string
 	failPrepare      map[string]error
-	imageFailures    int
+	imageFailures    map[string]int
+	bundledVersions  []string
 }
 
 func (f *fakeRunner) Prepare(_ context.Context, pkg artifacthub.Package, version string) (pipeline.Prepared, error) {
@@ -40,19 +41,24 @@ func (f *fakeRunner) Prepare(_ context.Context, pkg artifacthub.Package, version
 		return pipeline.Prepared{}, err
 	}
 	f.preparedVersions = append(f.preparedVersions, pkg.Name+"@"+version)
-	return pipeline.Prepared{Images: []images.Image{{Ref: "img:1"}}}, nil
+	return pipeline.Prepared{ChartPath: pkg.Name, Images: []images.Image{{Ref: "img:1", Selected: true}, {Ref: "img:2", Selected: true}, {Ref: "img:3", Selected: true}}}, nil
 }
 
-func (f *fakeRunner) Download(_ context.Context, _ pipeline.Prepared, refs []string, _ pipeline.ProgressFunc, _ pipeline.ByteProgressFunc) ([]bundle.ImageEntry, []pipeline.ImageFailure, error) {
-	entries := make([]bundle.ImageEntry, 0, len(refs))
-	for _, r := range refs {
-		entries = append(entries, bundle.ImageEntry{SourceRef: r})
+func (f *fakeRunner) Download(_ context.Context, prepared pipeline.Prepared, refs []string, _ pipeline.ProgressFunc, _ pipeline.ByteProgressFunc) ([]bundle.ImageEntry, []pipeline.ImageFailure, error) {
+	var entries = make([]bundle.ImageEntry, 0, len(refs))
+	var failures []pipeline.ImageFailure
+	for index, ref := range refs {
+		if index < f.imageFailures[prepared.ChartPath] {
+			failures = append(failures, pipeline.ImageFailure{Ref: ref, Err: fmt.Errorf("pull failed")})
+		} else {
+			entries = append(entries, bundle.ImageEntry{SourceRef: ref})
+		}
 	}
-	fails := make([]pipeline.ImageFailure, f.imageFailures)
-	return entries, fails, nil
+	return entries, failures, nil
 }
 
 func (f *fakeRunner) Bundle(_ pipeline.Prepared, pkg artifacthub.Package, version string, _ []bundle.ImageEntry) (string, error) {
+	f.bundledVersions = append(f.bundledVersions, pkg.Name+"@"+version)
 	return "archives/" + pkg.Name + "-" + version + ".tar.gz", nil
 }
 
@@ -99,15 +105,30 @@ func TestRun(t *testing.T) {
 	}
 }
 
-func TestRunAllSucceedNoError(t *testing.T) {
-	res := fakeResolver{pkgs: map[string]artifacthub.Package{"a": {Name: "a", Version: "1"}}}
-	run := &fakeRunner{imageFailures: 2}
-	var out bytes.Buffer
-	if err := run3(t, res, run, []ChartRef{{Repo: "r", Name: "a"}}, &out); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(out.String(), "ok (2 image(s) failed)") {
-		t.Errorf("expected partial-image note, got: %s", out.String())
+func TestRun_ImageCompleteness(t *testing.T) {
+	for _, missing := range []int{0, 1, 3} {
+		t.Run(fmt.Sprintf("missing=%d", missing), func(t *testing.T) {
+			var res = fakeResolver{pkgs: map[string]artifacthub.Package{"a": {Name: "a", Version: "1"}, "b": {Name: "b", Version: "1"}}}
+			var runner = &fakeRunner{imageFailures: map[string]int{"a": missing}}
+			var out bytes.Buffer
+			var err = run3(t, res, runner, []ChartRef{{Repo: "r", Name: "a"}, {Repo: "r", Name: "b"}}, &out)
+			if (err != nil) != (missing > 0) {
+				t.Fatalf("missing=%d: unexpected batch error %v", missing, err)
+			}
+			var completed = 2
+			if missing > 0 {
+				completed = 1
+				if !strings.Contains(err.Error(), "incomplete") || !strings.Contains(out.String(), fmt.Sprintf("PARTIAL (%d image(s) failed) -> archives/a-1.tar.gz", missing)) {
+					t.Fatalf("partial bundle not reported: err=%v output=%s", err, out.String())
+				}
+			}
+			if !strings.Contains(out.String(), fmt.Sprintf("%d/2 chart(s) succeeded", completed)) || !strings.Contains(out.String(), "[2/2] r/b ... ok -> archives/b-1.tar.gz") {
+				t.Errorf("unexpected batch output: %s", out.String())
+			}
+			if strings.Join(runner.bundledVersions, ",") != "a@1,b@1" {
+				t.Errorf("must bundle partial results and continue in order: %v", runner.bundledVersions)
+			}
+		})
 	}
 }
 

@@ -31,6 +31,8 @@ const (
 	statePreparing
 	stateReview
 	stateAddImage
+	stateSaveImages
+	stateSavingImages
 	stateDownloading
 	stateDownloadReview
 	stateBundling
@@ -43,6 +45,12 @@ const (
 type imageProgress struct {
 	written int64
 	total   int64
+}
+
+type sessionBundle struct {
+	path     string
+	included int
+	missing  int
 }
 
 // model is the root Bubble Tea model holding all UI and domain state.
@@ -69,16 +77,18 @@ type model struct {
 	// answered (or the user forced a preview). Used to avoid thrashing styles.
 	bgKnown bool
 
-	state    state
-	width    int
-	height   int
-	spinner  spinner.Model
-	progress progress.Model
-	search   textinput.Model
-	addInput textinput.Model
-	filter   textinput.Model
-	results  list.Model
-	versions list.Model
+	state             state
+	width             int
+	height            int
+	spinner           spinner.Model
+	progress          progress.Model
+	search            textinput.Model
+	addInput          textinput.Model
+	saveInput         textinput.Model
+	saveOverwritePath string
+	filter            textinput.Model
+	results           list.Model
+	versions          list.Model
 
 	// allPackages holds the raw search results; the results list shows the
 	// sort/filter projection of this slice. Keeping the raw set lets the user
@@ -109,7 +119,7 @@ type model struct {
 	// sessionBundles accumulates every bundle path created this session. The user
 	// can chain charts ("add another chart" on the done screen); each chart still
 	// produces its own bundle, and the done screen lists them all.
-	sessionBundles []string
+	sessionBundles []sessionBundle
 	err            error
 	// errStep labels which async step failed (search, prepare, download, bundle)
 	// so the error screen can frame the message for the user.
@@ -167,6 +177,9 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 	add.SetStyles(textInputStyles(styles.palette))
 	add.CharLimit = 200
 
+	var save = textinput.New()
+	save.Placeholder = "reviewed-images.json"
+	save.SetStyles(textInputStyles(styles.palette))
 	filter := textinput.New()
 	filter.Placeholder = "substring (e.g. bitnami, argo)…"
 	filter.SetStyles(textInputStyles(styles.palette))
@@ -203,6 +216,7 @@ func newModel(cfg config.Config, logger *log.Logger) model {
 		progress:       prog,
 		search:         search,
 		addInput:       add,
+		saveInput:      save,
 		filter:         filter,
 		results:        resultsList,
 		versions:       versionsList,
@@ -240,6 +254,7 @@ func (m *model) applyTheme() {
 	inputStyles := textInputStyles(m.styles.palette)
 	m.search.SetStyles(inputStyles)
 	m.addInput.SetStyles(inputStyles)
+	m.saveInput.SetStyles(inputStyles)
 	m.filter.SetStyles(inputStyles)
 	// Re-stamp package item palettes so list meta colors match.
 	if len(m.allPackages) > 0 {
