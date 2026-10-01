@@ -86,6 +86,8 @@ The TUI starts in a search screen. Type a chart name (e.g. `argo-cd`), press `En
 
 To bundle several charts in one sitting, press `a` (add another chart) on the Done screen: it returns to search while keeping the list of bundles already created. Each chart produces its own bundle. For fully headless multi-chart runs (a YAML list, no TUI), use the [`batch`](#batch) subcommand instead.
 
+After you quit, a plain-text summary stays in the terminal scrollback for every bundle created in the current session. It lists each path, available size, **COMPLETE** or **PARTIAL** status, included/missing image counts, and shell-quoted `verify` and extraction commands matching gzip or zstd. Chart-only bundles are labelled explicitly and show chart extraction guidance instead of image-loading instructions. Pressing `a` retains earlier bundles and their status; `n` starts a new session and clears this history. Quitting a session with no completed bundles prints no summary.
+
 ### Screens
 
 | Screen | Keys | Description |

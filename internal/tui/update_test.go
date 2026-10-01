@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -40,27 +42,106 @@ func keyPress(key string) tea.KeyPressMsg {
 }
 
 func TestDoneMsg_AppendsSessionBundle(t *testing.T) {
-	m := newModel(config.Default(), log.Discard())
-	m.state = stateBundling
-	got, _ := m.Update(doneMsg{bundlePath: "/tmp/a.tar.gz"})
-	m2 := got.(model)
-	assert.Equal(t, stateDone, m2.state)
-	assert.Equal(t, []string{"/tmp/a.tar.gz"}, m2.sessionBundles)
+	type testCase struct {
+		name     string
+		included int
+		missing  int
+	}
+	var cases = []testCase{{"complete", 3, 0}, {"partial", 2, 1}, {"chart only", 0, 0}}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var m = newTestModel()
+			m.state = stateBundling
+			m.entries = make([]bundle.ImageEntry, tc.included)
+			m.failures = make([]pipeline.ImageFailure, tc.missing)
+			var got tea.Model
+			got, _ = m.Update(doneMsg{bundlePath: "/tmp/a.tar.gz"})
+			var finished = got.(model)
+			assert.Equal(t, stateDone, finished.state)
+			assert.Equal(t, []sessionBundle{{path: "/tmp/a.tar.gz", included: tc.included, missing: tc.missing}}, finished.sessionBundles)
+		})
+	}
 }
 
 func TestAddAnotherChart_KeepsSessionBundles(t *testing.T) {
 	m := newModel(config.Default(), log.Discard())
 	m.width, m.height = 100, 40
 	m.state = stateDone
-	m.sessionBundles = []string{"/tmp/a.tar.gz"}
+	m.sessionBundles = []sessionBundle{{path: "/tmp/a.tar.gz", included: 2, missing: 1}}
 	got, _ := m.handleEndKey(keyPress("a"))
 	m2 := got.(model)
 	assert.Equal(t, stateSearch, m2.state)
-	assert.Equal(t, []string{"/tmp/a.tar.gz"}, m2.sessionBundles, "add-another must carry bundles forward")
+	assert.Equal(t, []sessionBundle{{path: "/tmp/a.tar.gz", included: 2, missing: 1}}, m2.sessionBundles, "add-another must carry bundles forward")
 
 	// n starts a clean session — history dropped.
 	fresh, _ := m.handleEndKey(keyPress("n"))
 	assert.Empty(t, fresh.(model).sessionBundles)
+}
+
+func TestDoneMsg_KeepsEarlierPartial(t *testing.T) {
+	var m = newTestModel()
+	m.state = stateBundling
+	m.entries = make([]bundle.ImageEntry, 2)
+	m.failures = make([]pipeline.ImageFailure, 1)
+	var got tea.Model
+	got, _ = m.Update(doneMsg{bundlePath: "a.tar.gz"})
+	got, _ = got.(model).handleEndKey(keyPress("a"))
+	m = got.(model)
+	m.state = stateBundling
+	m.entries = make([]bundle.ImageEntry, 4)
+	got, _ = m.Update(doneMsg{bundlePath: "b.tar.zst"})
+	got, _ = got.(model).handleEndKey(keyPress("q"))
+	assert.Equal(t, []sessionBundle{{path: "a.tar.gz", included: 2, missing: 1}, {path: "b.tar.zst", included: 4}}, got.(model).sessionBundles)
+}
+
+func TestDoneMsg_CountsUnbundledSelectedImages(t *testing.T) {
+	var m = newTestModel()
+	defer m.cancel()
+	m.state = stateBundling
+	m.entries = []bundle.ImageEntry{{SourceRef: "a:1"}}
+	m.reviewImages = []images.Image{{Ref: "a:1", Selected: true}, {Ref: "b:1", Selected: true}, {Ref: "c:1", Selected: false}}
+	var got tea.Model
+	got, _ = m.Update(doneMsg{bundlePath: "partial.tar.gz"})
+	assert.Equal(t, []sessionBundle{{path: "partial.tar.gz", included: 1, missing: 1}}, got.(model).sessionBundles)
+}
+
+func TestResetSession_SummaryHistory(t *testing.T) {
+	for _, keep := range []bool{true, false} {
+		t.Run(fmt.Sprintf("keep=%t", keep), func(t *testing.T) {
+			var m = newTestModel()
+			m.state = stateDone
+			m.sessionBundles = []sessionBundle{{path: "partial.tar.gz", included: 2, missing: 1}}
+			var fresh model
+			fresh, _ = m.resetSession(keep)
+			defer fresh.cancel()
+			var output strings.Builder
+			require.NoError(t, writeExitSummary(&output, fresh.sessionBundles))
+			if keep {
+				assert.Contains(t, output.String(), "PARTIAL: partial.tar.gz")
+				assert.Contains(t, output.String(), "2 included, 1 missing")
+			} else {
+				assert.Empty(t, output.String())
+			}
+			assert.Equal(t, stateSearch, fresh.state)
+			assert.Equal(t, m.cfg, fresh.cfg)
+		})
+	}
+}
+
+func TestDoneMsg_StaleIgnored(t *testing.T) {
+	for _, current := range []state{stateSearch, stateReview, stateDone} {
+		t.Run(fmt.Sprintf("state=%d", current), func(t *testing.T) {
+			var m = newTestModel()
+			defer m.cancel()
+			m.state = current
+			var got tea.Model
+			var cmd tea.Cmd
+			got, cmd = m.Update(doneMsg{bundlePath: "not-created.tar.gz"})
+			assert.Empty(t, got.(model).sessionBundles)
+			assert.Equal(t, current, got.(model).state)
+			assert.Nil(t, cmd)
+		})
+	}
 }
 
 func TestHandleResultsKey_SCycleSortField(t *testing.T) {

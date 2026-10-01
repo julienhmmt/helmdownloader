@@ -45,6 +45,12 @@ type imageProgress struct {
 	total   int64
 }
 
+type sessionBundle struct {
+	path     string
+	included int
+	missing  int
+}
+
 // model is the root Bubble Tea model holding all UI and domain state.
 type model struct {
 	cfg      config.Config
@@ -109,7 +115,7 @@ type model struct {
 	// sessionBundles accumulates every bundle path created this session. The user
 	// can chain charts ("add another chart" on the done screen); each chart still
 	// produces its own bundle, and the done screen lists them all.
-	sessionBundles []string
+	sessionBundles []sessionBundle
 	err            error
 	// errStep labels which async step failed (search, prepare, download, bundle)
 	// so the error screen can frame the message for the user.

@@ -136,7 +136,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.bundlePath = typed.bundlePath
-		m.sessionBundles = append(m.sessionBundles, typed.bundlePath)
+		m.sessionBundles = append(m.sessionBundles, sessionBundle{
+			path:     typed.bundlePath,
+			included: len(m.entries),
+			missing:  max(len(m.failures), m.countSelected()-len(m.entries)),
+		})
 		m.state = stateDone
 		m.errStep = ""
 		return m, nil

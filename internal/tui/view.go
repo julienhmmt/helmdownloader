@@ -397,8 +397,8 @@ func (m model) viewDone() string {
 	if len(m.sessionBundles) > 1 {
 		lines = append(lines, "",
 			m.styles.muted.Render(fmt.Sprintf("Session bundles (%d):", len(m.sessionBundles))))
-		for _, p := range m.sessionBundles {
-			lines = append(lines, m.styles.muted.Render("  "+p))
+		for _, recorded := range m.sessionBundles {
+			lines = append(lines, m.styles.muted.Render("  "+recorded.path))
 		}
 	}
 	lines = append(lines,
