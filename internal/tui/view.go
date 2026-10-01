@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/julienhmmt/helmdownloader/pkg/config"
+	"github.com/julienhmmt/helmdownloader/pkg/images"
 )
 
 // View renders the current screen, declaring the alt screen via the v2 tea.View.
@@ -93,7 +94,7 @@ func (m model) viewList(body string) string {
 		lines = append(lines, "", m.sortFilterStatus())
 	}
 	if m.status != "" {
-		lines = append(lines, "", m.styles.errorMsg.Render(m.status))
+		lines = append(lines, "", m.statusStyle().Render(m.status))
 	}
 	lines = append(lines, m.renderHelp(m.listHelp()))
 	return strings.Join(lines, "\n")
@@ -186,16 +187,21 @@ func (m model) viewReview() string {
 			if img.Selected {
 				box = "[x]"
 			}
-			ref := truncateMiddle(img.Ref, refWidth)
+			marker := ""
+			if images.Unpinned(img.Ref) {
+				marker = " ⚠ latest"
+			}
+			ref := truncateMiddle(img.Ref, refWidth-lipgloss.Width(marker))
 			line := fmt.Sprintf("%s%s %s", cursor, box, ref)
 			if index == m.reviewCursor {
 				// Full-width soft wash — Width pads trailing cells so the
-				// bar spans the whole row, not just the character run.
-				line = m.styles.hover.Width(rowWidth).Render(line)
+				// bar spans the whole row, not just the character run. The
+				// marker stays plain inside the washed line.
+				line = m.styles.hover.Width(rowWidth).Render(line + marker)
 			} else if img.Selected {
-				line = fmt.Sprintf("%s%s %s", cursor, m.styles.checked.Render(box), m.styles.primary.Render(ref))
+				line = fmt.Sprintf("%s%s %s", cursor, m.styles.checked.Render(box), m.styles.primary.Render(ref)) + m.styles.errorMsg.Render(marker)
 			} else {
-				line = m.styles.primary.Render(line)
+				line = m.styles.primary.Render(line) + m.styles.errorMsg.Render(marker)
 			}
 			rows.WriteString(line)
 			if index < end-1 {
@@ -212,7 +218,7 @@ func (m model) viewReview() string {
 		m.cfg.RegistryPrefix, m.cfg.Platform, m.cfg.OutputDir))
 	body := lipgloss.JoinVertical(lipgloss.Left, rows.String(), "", meta)
 	// Chart-only chart: "download" is misleading with nothing to pull.
-	help := "space toggle · A all · N none · a add · d delete · e save review\nj/k move · pgup/pgdn · g/G · enter download · ctrl+t themes · esc back"
+	help := "space toggle · A all · N none · i invert · a add · d delete\ne save review · j/k move · pgup/pgdn · g/G · enter download\nctrl+t themes · esc back"
 	if len(m.reviewImages) == 0 {
 		help = "enter bundle chart (no images) · a add · e save review · ctrl+t themes · esc back"
 	}
@@ -270,7 +276,8 @@ func (m model) viewDownloading() string {
 	}
 
 	body := lipgloss.JoinVertical(lipgloss.Left, lines...)
-	return m.screen("Downloading images", "", body, "esc cancel · ctrl+t themes · ctrl+c quit")
+	title := fmt.Sprintf("Downloading images · %s %s", m.selectedPkg.Name, m.selectedVersion)
+	return m.screen(title, "", body, "esc cancel · ctrl+t themes · ctrl+c quit")
 }
 
 // miniBar renders a width-cell ASCII progress bar for (written/total).
@@ -312,6 +319,7 @@ func (m model) byteLabel(written, total int64) string {
 func (m model) viewBundling() string {
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		fmt.Sprintf("%s %s", m.spinner.View(), m.styles.primary.Render("Assembling bundle…")),
+		m.styles.muted.Render("esc is disabled while the archive is written"),
 		"",
 		m.renderHelp("ctrl+c quit"),
 	)
@@ -462,7 +470,11 @@ func (m model) viewError() string {
 	if m.err != nil {
 		lines = append(lines, m.err.Error())
 	}
-	lines = append(lines, "", m.renderHelp("n new session · ctrl+t themes · q quit"))
+	help := "n new session · ctrl+t themes · q quit"
+	if _, ok := errorReturnState(m.errStep, m.selectedPkg.Name != ""); ok {
+		help = "esc back · n new session · ctrl+t themes · q quit"
+	}
+	lines = append(lines, "", m.renderHelp(help))
 	return m.frame(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }
 

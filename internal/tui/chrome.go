@@ -30,7 +30,7 @@ func (m model) screen(title, subtitle, body, help string) string {
 	}
 	parts = append(parts, "", body)
 	if m.status != "" {
-		parts = append(parts, "", m.styles.errorMsg.Render(m.status))
+		parts = append(parts, "", m.statusStyle().Render(m.status))
 	}
 	if help != "" {
 		parts = append(parts, "", m.renderHelp(help))

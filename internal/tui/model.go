@@ -113,9 +113,12 @@ type model struct {
 	// so the download screen can show all concurrent pulls advancing
 	// rather than flapping between refs.
 	imageProgress map[string]imageProgress
-	entries       []bundle.ImageEntry
-	failures      []pipeline.ImageFailure
-	bundlePath    string
+	// cancelArmed tracks the double-esc gate on the download screen: the
+	// first esc arms cancellation, the second actually cancels.
+	cancelArmed bool
+	entries     []bundle.ImageEntry
+	failures    []pipeline.ImageFailure
+	bundlePath  string
 	// sessionBundles accumulates every bundle path created this session. The user
 	// can chain charts ("add another chart" on the done screen); each chart still
 	// produces its own bundle, and the done screen lists them all.
@@ -128,6 +131,9 @@ type model struct {
 	// state). Cleared on most navigation. Prefer status over stateError for
 	// recoverable UX (empty results, silent no-ops, soft validation).
 	status string
+	// statusWarn selects warning styling for status: true renders it in the
+	// error tone (setWarning), false in the muted info tone (setStatus).
+	statusWarn bool
 	// reviewWarnAck tracks whether the user already acknowledged a progressive
 	// safety warning on the review screen (deprecated chart / prerelease).
 	reviewWarnAck bool
@@ -140,11 +146,32 @@ type model struct {
 	themeBeforeMenu string
 }
 
-// setStatus stores a soft status message for the next render.
-func (m *model) setStatus(s string) { m.status = s }
+// setStatus stores a soft informational status message for the next render.
+func (m *model) setStatus(s string) {
+	m.status = s
+	m.statusWarn = false
+}
+
+// setWarning stores a status message rendered in the warning (error) tone.
+func (m *model) setWarning(s string) {
+	m.status = s
+	m.statusWarn = true
+}
 
 // clearStatus clears any soft status message.
-func (m *model) clearStatus() { m.status = "" }
+func (m *model) clearStatus() {
+	m.status = ""
+	m.statusWarn = false
+}
+
+// statusStyle returns the style for the current status message: warning tone
+// when set via setWarning, otherwise the quieter info tone.
+func (m model) statusStyle() lipgloss.Style {
+	if m.statusWarn {
+		return m.styles.errorMsg
+	}
+	return m.styles.subtitle
+}
 
 // newModel constructs the root model from cfg.
 func newModel(cfg config.Config, logger *log.Logger) model {

@@ -48,7 +48,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.filterValue = ""
 		m.refreshResults()
 		if len(typed.packages) == 0 {
-			m.setStatus("No charts found. Try a different query.")
+			m.setWarning("No charts found. Try a different query.")
 		} else {
 			m.clearStatus()
 		}
@@ -61,7 +61,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.errStep = ""
 		m.versions.SetItems(versionsToItems(typed.versions))
 		if len(typed.versions) == 0 {
-			m.setStatus("No versions returned for this chart.")
+			m.setWarning("No versions returned for this chart.")
 		} else {
 			m.clearStatus()
 		}
@@ -269,6 +269,11 @@ func (m model) handleThemeMenuKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // Bundle has no context, so Esc is a no-op during bundling; ctrl+c still quits.
 func (m model) handleBusyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if msg.String() != "esc" {
+		// Any other key disarms a pending download cancel.
+		if m.cancelArmed {
+			m.cancelArmed = false
+			m.clearStatus()
+		}
 		return m.updateComponents(msg)
 	}
 	switch m.state {
@@ -296,6 +301,13 @@ func (m model) handleBusyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.errStep = ""
 		return m, cleanup
 	case stateDownloading:
+		if !m.cancelArmed {
+			m.cancelArmed = true
+			m.setStatus("Press esc again to cancel the download.")
+			return m, nil
+		}
+		m.cancelArmed = false
+		m.clearStatus()
 		m.cancel()
 		m.ctx, m.cancel = context.WithCancel(context.Background())
 		m.imageProgress = map[string]imageProgress{}
@@ -319,8 +331,10 @@ func (m model) handleSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		query := m.search.Value()
 		if query == "" {
+			m.setStatus("Type a chart name to search.")
 			return m, nil
 		}
+		m.clearStatus()
 		m.state = stateSearching
 		m.errStep = "search"
 		return m, tea.Batch(m.spinner.Tick, searchCmd(m.ctx, m.client, query, m.cfg.SearchLimit))
@@ -506,6 +520,9 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if len(m.reviewImages) > 0 {
 			m.reviewImages[m.reviewCursor].Selected = !m.reviewImages[m.reviewCursor].Selected
 		}
+	case "i":
+		m.clearStatus()
+		invertSelected(m.reviewImages)
 	case "a":
 		m.clearStatus()
 		m.addInput.SetValue("")
@@ -538,7 +555,7 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if len(m.reviewImages) == 0 {
 			if warn := m.reviewSafetyWarning(); warn != "" && !m.reviewWarnAck {
 				m.reviewWarnAck = true
-				m.setStatus(warn)
+				m.setWarning(warn)
 				return m, nil
 			}
 			m.clearStatus()
@@ -550,15 +567,16 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				bundleCmd(m.pipeline, m.prepared, m.selectedPkg, m.selectedVersion, nil))
 		}
 		if m.countSelected() == 0 {
-			m.setStatus("Select at least one image (space), or press a to add one.")
+			m.setWarning("Select at least one image (space), or press a to add one.")
 			return m, nil
 		}
 		if warn := m.reviewSafetyWarning(); warn != "" && !m.reviewWarnAck {
 			m.reviewWarnAck = true
-			m.setStatus(warn)
+			m.setWarning(warn)
 			return m, nil
 		}
 		m.clearStatus()
+		m.cancelArmed = false
 		m.prepared.Images = m.reviewImages
 		refs := selectedRefs(m.reviewImages)
 		m.entries, m.failures = nil, nil
@@ -578,6 +596,8 @@ func (m model) handleDownloadReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd)
 	case "r":
 		refs := failureRefs(m.failures)
 		m.failures = nil
+		m.cancelArmed = false
+		m.clearStatus()
 		m.imageProgress = map[string]imageProgress{}
 		m.state = stateDownloading
 		m.errStep = "download"
@@ -612,7 +632,7 @@ func (m model) handleAddImageKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		if !images.ValidRef(ref) {
 			// Stay on add screen so the user can edit; do not abort review.
-			m.setStatus("Invalid image reference.")
+			m.setWarning("Invalid image reference.")
 			return m, nil
 		}
 		m.reviewImages = append(m.reviewImages, images.Image{Ref: ref, Selected: true})
@@ -654,7 +674,7 @@ func (m model) handleSaveImagesKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m model) submitReviewSave() (tea.Model, tea.Cmd) {
 	var path = strings.TrimSpace(m.saveInput.Value())
 	if path == "" {
-		m.setStatus("Enter a file path to save the reviewed list.")
+		m.setWarning("Enter a file path to save the reviewed list.")
 		return m, nil
 	}
 	m.clearStatus()
@@ -669,12 +689,12 @@ func (m model) finishReviewSave(msg savedReviewMsg) (tea.Model, tea.Cmd) {
 	m.state = stateSaveImages
 	if msg.overwriteRequired {
 		m.saveOverwritePath = msg.path
-		m.setStatus("File exists. Press enter again to overwrite, or esc to cancel.")
+		m.setWarning("File exists. Press enter again to overwrite, or esc to cancel.")
 		return m, nil
 	}
 	m.saveOverwritePath = ""
 	if msg.err != nil {
-		m.setStatus(msg.err.Error())
+		m.setWarning(msg.err.Error())
 		return m, nil
 	}
 	m.saveInput.Blur()
@@ -685,6 +705,21 @@ func (m model) finishReviewSave(msg savedReviewMsg) (tea.Model, tea.Cmd) {
 
 // handleEndKey processes the terminal done/error screens.
 func (m model) handleEndKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// On a recoverable error, esc returns to the step that failed; q and
+	// enter still quit outright.
+	if m.state == stateError && msg.String() == "esc" {
+		if ret, ok := errorReturnState(m.errStep, m.selectedPkg.Name != ""); ok {
+			var cmd tea.Cmd
+			if m.errStep == "prepare" {
+				cmd = cleanupCmd(m.prepared.WorkDir, m.prepared.TempWorkDir)
+			}
+			m.err = nil
+			m.errStep = ""
+			m.clearStatus()
+			m.state = ret
+			return m, cmd
+		}
+	}
 	switch msg.String() {
 	case "q", "esc", "enter":
 		m.cancel()
@@ -721,6 +756,23 @@ func (m model) resetSession(keepSession bool) (model, tea.Cmd) {
 	return fresh, cleanupCmd(m.prepared.WorkDir, m.prepared.TempWorkDir)
 }
 
+// errorReturnState reports whether esc on the error screen can return to an
+// earlier step, and which one. Search errors go back to the prompt; prepare
+// errors go back to versions when a chart was already selected; download and
+// bundle errors are terminal (esc still quits).
+func errorReturnState(errStep string, hasPkg bool) (state, bool) {
+	switch errStep {
+	case "search":
+		return stateSearch, true
+	case "prepare":
+		if hasPkg {
+			return stateVersions, true
+		}
+		return stateSearch, true
+	}
+	return stateError, false
+}
+
 // selectedRefs returns the references of the images marked for inclusion.
 func selectedRefs(imgs []images.Image) []string {
 	refs := make([]string, 0, len(imgs))
@@ -730,6 +782,13 @@ func selectedRefs(imgs []images.Image) []string {
 		}
 	}
 	return refs
+}
+
+// invertSelected flips the selected flag on every image.
+func invertSelected(imgs []images.Image) {
+	for i := range imgs {
+		imgs[i].Selected = !imgs[i].Selected
+	}
 }
 
 // failureRefs returns the references of the given failures.

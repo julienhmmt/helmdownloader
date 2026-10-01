@@ -149,6 +149,21 @@ func ValidRef(ref string) bool {
 	return err == nil
 }
 
+// Unpinned reports whether ref does not pin to a specific immutable tag: the
+// reference carries no digest and either no explicit tag or the mutable
+// "latest" tag. Invalid refs return false (ValidRef covers rejection).
+func Unpinned(ref string) bool {
+	ref = strings.TrimSpace(ref)
+	if _, err := name.ParseReference(PullRef(ref), name.WeakValidation); err != nil {
+		return false
+	}
+	_, tag, digest := splitRef(ref)
+	if digest != "" {
+		return false
+	}
+	return tag == "" || tag == defaultTag
+}
+
 // defaultTag is used for the destination tag when a source reference carries no
 // tag (e.g. it is pinned only by digest). A docker-style tarball must be tagged,
 // and a digest cannot serve as a tag, so we fall back to "latest".
