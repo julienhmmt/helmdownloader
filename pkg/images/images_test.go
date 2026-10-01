@@ -248,3 +248,23 @@ func TestValidRef(t *testing.T) {
 		})
 	}
 }
+
+func TestUnpinned(t *testing.T) {
+	digest64 := "sha256:" + strings.Repeat("a", 64)
+	tests := []struct {
+		ref  string
+		want bool
+	}{
+		{ref: "nginx", want: true},
+		{ref: "nginx:latest", want: true},
+		{ref: "nginx:1.27", want: false},
+		{ref: "redis@" + digest64, want: false},
+		{ref: "nginx:latest@" + digest64, want: false},
+		{ref: "not a ref", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.ref, func(t *testing.T) {
+			assert.Equal(t, tt.want, images.Unpinned(tt.ref))
+		})
+	}
+}

@@ -309,6 +309,22 @@ func TestViewError_ShowsStepLabel(t *testing.T) {
 	assert.Contains(t, out, "helm pull failed")
 }
 
+func TestViewReview_FlagsUnpinnedTag(t *testing.T) {
+	m := newTestModel()
+	m.state = stateReview
+	m.selectedPkg = artifacthub.Package{Name: "web"}
+	m.selectedVersion = "1.0.0"
+	m.reviewImages = []images.Image{
+		{Ref: "nginx:latest", Selected: true},
+		{Ref: "redis:7", Selected: true},
+	}
+	out := m.render()
+	assert.Contains(t, out, "⚠ latest")
+	// Only the unpinned row is flagged: the marker sits next to nginx, and a
+	// pinned tag like redis:7 gets no flag of its own.
+	assert.Equal(t, 1, strings.Count(out, "⚠ latest"))
+}
+
 func TestViewDownloading_ShowsEscCancel(t *testing.T) {
 	m := newTestModel()
 	m.state = stateDownloading

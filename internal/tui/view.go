@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/julienhmmt/helmdownloader/pkg/config"
+	"github.com/julienhmmt/helmdownloader/pkg/images"
 )
 
 // View renders the current screen, declaring the alt screen via the v2 tea.View.
@@ -186,16 +187,21 @@ func (m model) viewReview() string {
 			if img.Selected {
 				box = "[x]"
 			}
-			ref := truncateMiddle(img.Ref, refWidth)
+			marker := ""
+			if images.Unpinned(img.Ref) {
+				marker = " ⚠ latest"
+			}
+			ref := truncateMiddle(img.Ref, refWidth-lipgloss.Width(marker))
 			line := fmt.Sprintf("%s%s %s", cursor, box, ref)
 			if index == m.reviewCursor {
 				// Full-width soft wash — Width pads trailing cells so the
-				// bar spans the whole row, not just the character run.
-				line = m.styles.hover.Width(rowWidth).Render(line)
+				// bar spans the whole row, not just the character run. The
+				// marker stays plain inside the washed line.
+				line = m.styles.hover.Width(rowWidth).Render(line + marker)
 			} else if img.Selected {
-				line = fmt.Sprintf("%s%s %s", cursor, m.styles.checked.Render(box), m.styles.primary.Render(ref))
+				line = fmt.Sprintf("%s%s %s", cursor, m.styles.checked.Render(box), m.styles.primary.Render(ref)) + m.styles.errorMsg.Render(marker)
 			} else {
-				line = m.styles.primary.Render(line)
+				line = m.styles.primary.Render(line) + m.styles.errorMsg.Render(marker)
 			}
 			rows.WriteString(line)
 			if index < end-1 {
