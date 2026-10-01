@@ -464,7 +464,11 @@ func (m model) viewError() string {
 	if m.err != nil {
 		lines = append(lines, m.err.Error())
 	}
-	lines = append(lines, "", m.renderHelp("n new session · ctrl+t themes · q quit"))
+	help := "n new session · ctrl+t themes · q quit"
+	if _, ok := errorReturnState(m.errStep, m.selectedPkg.Name != ""); ok {
+		help = "esc back · n new session · ctrl+t themes · q quit"
+	}
+	lines = append(lines, "", m.renderHelp(help))
 	return m.frame(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }
 

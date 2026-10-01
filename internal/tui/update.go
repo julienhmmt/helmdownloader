@@ -705,6 +705,21 @@ func (m model) finishReviewSave(msg savedReviewMsg) (tea.Model, tea.Cmd) {
 
 // handleEndKey processes the terminal done/error screens.
 func (m model) handleEndKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// On a recoverable error, esc returns to the step that failed; q and
+	// enter still quit outright.
+	if m.state == stateError && msg.String() == "esc" {
+		if ret, ok := errorReturnState(m.errStep, m.selectedPkg.Name != ""); ok {
+			var cmd tea.Cmd
+			if m.errStep == "prepare" {
+				cmd = cleanupCmd(m.prepared.WorkDir, m.prepared.TempWorkDir)
+			}
+			m.err = nil
+			m.errStep = ""
+			m.clearStatus()
+			m.state = ret
+			return m, cmd
+		}
+	}
 	switch msg.String() {
 	case "q", "esc", "enter":
 		m.cancel()
@@ -739,6 +754,23 @@ func (m model) resetSession(keepSession bool) (model, tea.Cmd) {
 		fresh.sessionBundles = m.sessionBundles
 	}
 	return fresh, cleanupCmd(m.prepared.WorkDir, m.prepared.TempWorkDir)
+}
+
+// errorReturnState reports whether esc on the error screen can return to an
+// earlier step, and which one. Search errors go back to the prompt; prepare
+// errors go back to versions when a chart was already selected; download and
+// bundle errors are terminal (esc still quits).
+func errorReturnState(errStep string, hasPkg bool) (state, bool) {
+	switch errStep {
+	case "search":
+		return stateSearch, true
+	case "prepare":
+		if hasPkg {
+			return stateVersions, true
+		}
+		return stateSearch, true
+	}
+	return stateError, false
 }
 
 // selectedRefs returns the references of the images marked for inclusion.

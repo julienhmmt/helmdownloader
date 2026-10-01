@@ -101,6 +101,7 @@ After you quit, a plain-text summary stays in the terminal scrollback for every 
 | Save Review | `Enter` save (again to confirm overwrite), `Ctrl+T` themes, `Esc` cancel | Choose a JSON path for the current reviewed image list |
 | Download | `Esc` twice to cancel (back to review or partial results), `Ctrl+T` themes, `Ctrl+C` quit | Pulls images; partial successes are kept |
 | Done | `a` add another chart, `n` new session, `Ctrl+T` themes, `q` quit | Path, image counts, size, and next steps (`verify` / extract). `a` chains another chart into the same session; each chart still ships its own bundle and all session bundles are listed here |
+| Error | `Esc` back (search/prepare errors), `n` new session, `Ctrl+T` themes, `q` quit | Shows which step failed; recoverable steps return you there |
 | Theme | `j`/`k` move, `1`–`6` jump, `Enter` apply, `Esc` cancel | Pick a palette with live preview (`Ctrl+T` from most screens) |
 
 ### Sorting and Filtering Results

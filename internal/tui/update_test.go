@@ -568,6 +568,57 @@ func TestHandleReviewKey_InvertSelect(t *testing.T) {
 		[]bool{m2.reviewImages[0].Selected, m2.reviewImages[1].Selected, m2.reviewImages[2].Selected})
 }
 
+func TestErrorReturnState(t *testing.T) {
+	tests := []struct {
+		name    string
+		errStep string
+		hasPkg  bool
+		want    state
+		wantOK  bool
+	}{
+		{name: "search", errStep: "search", want: stateSearch, wantOK: true},
+		{name: "prepare with chart", errStep: "prepare", hasPkg: true, want: stateVersions, wantOK: true},
+		{name: "prepare without chart", errStep: "prepare", want: stateSearch, wantOK: true},
+		{name: "download", errStep: "download", wantOK: false},
+		{name: "bundle", errStep: "bundle", wantOK: false},
+		{name: "empty", errStep: "", wantOK: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := errorReturnState(tt.errStep, tt.hasPkg)
+			assert.Equal(t, tt.wantOK, ok)
+			if ok {
+				assert.Equal(t, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestHandleEndKey_EscOnErrorReturnsToFailedStep(t *testing.T) {
+	m := newTestModel()
+	m.state = stateError
+	m.errStep = "prepare"
+	m.err = assert.AnError
+	m.selectedPkg = artifacthub.Package{Name: "argo-cd"}
+	got, cmd := m.handleEndKey(keyPress("esc"))
+	m2 := got.(model)
+	assert.Equal(t, stateVersions, m2.state)
+	assert.NoError(t, m2.err)
+	assert.Empty(t, m2.errStep)
+	assert.NotNil(t, cmd) // cleanup of the failed prepare work dir
+}
+
+func TestHandleEndKey_EscOnTerminalErrorStillQuits(t *testing.T) {
+	m := newTestModel()
+	m.state = stateError
+	m.errStep = "bundle"
+	m.err = assert.AnError
+	got, cmd := m.handleEndKey(keyPress("esc"))
+	m2 := got.(model)
+	assert.Equal(t, stateError, m2.state)
+	assert.NotNil(t, cmd) // quit batch
+}
+
 func TestHandleReviewKey_DeprecatedRequiresSecondEnter(t *testing.T) {
 	m := newTestModel()
 	m.state = stateReview
