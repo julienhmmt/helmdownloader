@@ -399,6 +399,26 @@ func TestHandleBusyKey_EscBundlingIsNoop(t *testing.T) {
 	assert.Equal(t, stateBundling, m2.state)
 }
 
+func TestHandleSearchKey_EmptyEnterSetsStatus(t *testing.T) {
+	m := newTestModel()
+	m.state = stateSearch
+	got, _ := m.handleSearchKey(keyPress("enter"))
+	m2 := got.(model)
+	assert.Equal(t, stateSearch, m2.state)
+	assert.Equal(t, "Type a chart name to search.", m2.status)
+}
+
+func TestHandleSearchKey_EnterClearsStatus(t *testing.T) {
+	m := newTestModel()
+	m.state = stateSearch
+	m.search.SetValue("argo-cd")
+	m.setStatus("Type a chart name to search.")
+	got, _ := m.handleSearchKey(keyPress("enter"))
+	m2 := got.(model)
+	assert.Equal(t, stateSearching, m2.state)
+	assert.Empty(t, m2.status)
+}
+
 func TestHandleReviewKey_ChartOnlyEnterBundles(t *testing.T) {
 	// A CRD chart discovers no images: enter must skip download and go straight
 	// to bundling instead of demanding an image selection.

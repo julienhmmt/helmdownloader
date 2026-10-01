@@ -331,8 +331,10 @@ func (m model) handleSearchKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		query := m.search.Value()
 		if query == "" {
+			m.setStatus("Type a chart name to search.")
 			return m, nil
 		}
+		m.clearStatus()
 		m.state = stateSearching
 		m.errStep = "search"
 		return m, tea.Batch(m.spinner.Tick, searchCmd(m.ctx, m.client, query, m.cfg.SearchLimit))
