@@ -499,6 +499,11 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if n := len(m.reviewImages); n > 0 {
 			m.reviewCursor = n - 1
 		}
+	case "A", "N":
+		for index := range m.reviewImages {
+			m.reviewImages[index].Selected = msg.String() == "A"
+		}
+		m.clearStatus()
 	case "space":
 		if len(m.reviewImages) > 0 {
 			m.reviewImages[m.reviewCursor].Selected = !m.reviewImages[m.reviewCursor].Selected

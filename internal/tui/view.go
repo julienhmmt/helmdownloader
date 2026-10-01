@@ -212,7 +212,7 @@ func (m model) viewReview() string {
 		m.cfg.RegistryPrefix, m.cfg.Platform, m.cfg.OutputDir))
 	body := lipgloss.JoinVertical(lipgloss.Left, rows.String(), "", meta)
 	// Chart-only chart: "download" is misleading with nothing to pull.
-	help := "space toggle · a add · d delete · e save review · j/k move · pgup/pgdn page · g/G jump · enter download · ctrl+t themes · esc back"
+	help := "space toggle · A all · N none · a add · d delete · e save review\nj/k move · pgup/pgdn · g/G · enter download · ctrl+t themes · esc back"
 	if len(m.reviewImages) == 0 {
 		help = "enter bundle chart (no images) · a add · e save review · ctrl+t themes · esc back"
 	}
