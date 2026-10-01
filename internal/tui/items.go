@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/lipgloss/v2"
 
@@ -42,6 +43,9 @@ func (i packageItem) Description() string {
 	if i.pkg.AppVersion != "" {
 		metaParts = append(metaParts, metaStyle.Render("app:"+i.pkg.AppVersion))
 	}
+	if age := relativeAge(i.pkg.LastUpdated, time.Now()); age != "" {
+		metaParts = append(metaParts, metaStyle.Render("updated:"+age))
+	}
 	sep := lipgloss.NewStyle().Foreground(i.palette.faint).Render(" · ")
 	return fmt.Sprintf("%s  %s", star, strings.Join(metaParts, sep))
 }
@@ -76,9 +80,33 @@ func (i versionItem) Title() string {
 	return i.version.Version + tag
 }
 
-// Description renders the app version backing this chart version.
+// Description renders the app version backing this chart version, plus its
+// relative publish age when ArtifactHub reported one.
 func (i versionItem) Description() string {
-	return "app version: " + i.version.AppVersion
+	base := "app version: " + i.version.AppVersion
+	if age := relativeAge(i.version.Timestamp, time.Now()); age != "" {
+		return base + " · " + age
+	}
+	return base
+}
+
+// relativeAge renders a unix-second timestamp as a coarse human age
+// ("today", "Nd ago", "Nmo ago", "Ny ago"). Returns "" when ts is unset.
+func relativeAge(ts int64, now time.Time) string {
+	if ts <= 0 {
+		return ""
+	}
+	d := now.Sub(time.Unix(ts, 0))
+	switch {
+	case d < 24*time.Hour:
+		return "today"
+	case d < 30*24*time.Hour:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	case d < 365*24*time.Hour:
+		return fmt.Sprintf("%dmo ago", int(d.Hours()/(24*30)))
+	default:
+		return fmt.Sprintf("%dy ago", int(d.Hours()/(24*365)))
+	}
 }
 
 // FilterValue is the text used by the list's fuzzy filter.

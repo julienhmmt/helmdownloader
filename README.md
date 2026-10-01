@@ -93,7 +93,7 @@ After you quit, a plain-text summary stays in the terminal scrollback for every 
 | Screen | Keys | Description |
 | ------ | ---- | ------------ |
 | Search | `Enter` to search, `Ctrl+T` themes, `Esc` to quit | Type a chart name to search ArtifactHub |
-| Results | `Enter` select, `/` fuzzy, `s` sort field, `o` sort dir, `f` field, `F` value, `Tab` cycle values, `Ctrl+T` themes, `Esc` back | Browse matching charts; official/deprecated badges on title; meta line shows stars, repo, publisher, app |
+| Results | `Enter` select, `/` fuzzy, `s` sort field, `o` sort dir, `f` field, `F` value, `Tab` cycle values, `Ctrl+T` themes, `Esc` back | Browse matching charts; official/deprecated badges on title; meta line shows stars, repo, publisher, app, updated age |
 | Filter | `Enter` apply, `Tab` cycle values, `Ctrl+T` themes, `Esc` cancel | Type a substring to filter by author or company |
 | Versions | `Enter` to select, `/` to filter, `Ctrl+T` themes, `Esc` to back | Pick a chart version |
 | Review | `Space` toggle, `A` select all, `N` deselect all, `i` invert, `a` add, `d` delete, `e` save review, `j`/`k` move, `PgUp`/`PgDn` (or `Ctrl+u`/`Ctrl+d`) page, `g`/`G` jump, `Enter` download, `Ctrl+T` themes, `Esc` back | Review auto-discovered images; long lists are windowed |

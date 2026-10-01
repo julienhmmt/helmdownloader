@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -52,6 +53,41 @@ func TestPackageItem_Description_FallsBackToRepoName(t *testing.T) {
 	desc := item.Description()
 	assert.Contains(t, desc, "by:bitnami")
 	assert.NotContains(t, desc, "app:")
+}
+
+func TestRelativeAge(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	day := int64(24 * 3600)
+	tests := []struct {
+		name string
+		ts   int64
+		want string
+	}{
+		{name: "unset", ts: 0, want: ""},
+		{name: "negative", ts: -5, want: ""},
+		{name: "now", ts: now.Unix(), want: "today"},
+		{name: "hours ago", ts: now.Unix() - 5*3600, want: "today"},
+		{name: "days ago", ts: now.Unix() - 12*day, want: "12d ago"},
+		{name: "months ago", ts: now.Unix() - 90*day, want: "3mo ago"},
+		{name: "years ago", ts: now.Unix() - 800*day, want: "2y ago"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, relativeAge(tt.ts, now))
+		})
+	}
+}
+
+func TestPackageItem_Description_UpdatedAge(t *testing.T) {
+	item := packageItem{pkg: artifacthub.Package{
+		Name:        "argo-cd",
+		RepoName:    "argo",
+		LastUpdated: time.Now().Unix() - 48*3600,
+	}}
+	assert.Contains(t, item.Description(), "updated:")
+
+	item.pkg.LastUpdated = 0
+	assert.NotContains(t, item.Description(), "updated:")
 }
 
 func TestPackageItem_FilterValue(t *testing.T) {
