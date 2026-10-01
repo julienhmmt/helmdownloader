@@ -398,6 +398,36 @@ func TestHandleReviewKey_ChartOnlyDeprecatedRequiresSecondEnter(t *testing.T) {
 	assert.NotNil(t, cmd)
 }
 
+func TestPreparedMsg_RestoresSavedReviewIncludingEmpty(t *testing.T) {
+	for _, empty := range []bool{false, true} {
+		t.Run(fmt.Sprintf("empty=%t", empty), func(t *testing.T) {
+			var m = newTestModel()
+			defer m.cancel()
+			m.state = statePreparing
+			m.cfg.ImportImages = filepath.Join(t.TempDir(), "saved.json")
+			m.cfg.ExportImages = filepath.Join(t.TempDir(), "discovered.json")
+			var approved = []images.Image{{Ref: "busybox:1", Selected: false}}
+			if empty {
+				approved = []images.Image{}
+			}
+			require.NoError(t, exportImages(m.cfg.ImportImages, approved))
+			var discovered = []images.Image{{Ref: "redis:7", Selected: true}}
+			var got, _ = m.Update(preparedMsg{prepared: pipeline.Prepared{Images: discovered}})
+			var review = got.(model)
+			assert.Equal(t, stateReview, review.state)
+			assert.Equal(t, approved, review.reviewImages)
+			var exported, err = importImages(m.cfg.ExportImages)
+			require.NoError(t, err)
+			assert.Equal(t, discovered, exported)
+			if empty {
+				got, _ = review.handleReviewKey(keyPress("enter"))
+				assert.Equal(t, stateBundling, got.(model).state)
+				assert.Empty(t, got.(model).prepared.Images)
+			}
+		})
+	}
+}
+
 func TestPreparedMsg_ImportImagesOverridesEmptyDiscovery(t *testing.T) {
 	// A chart with no discovered images must still honour -import-images when
 	// entering review so the operator sees the approved list before download.

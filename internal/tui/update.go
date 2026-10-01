@@ -97,9 +97,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = stateError
 				return m, nil
 			}
-			if len(imported) > 0 {
-				m.reviewImages = imported
-			}
+			m.reviewImages = imported
 		}
 		return m, nil
 	case savedReviewMsg:

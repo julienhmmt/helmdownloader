@@ -216,7 +216,7 @@ Use `-export-images` and `-import-images` to review the discovered image list wi
 ./helmdownloader -import-images images.json
 ```
 
-Press `e` on Review to save your **current** image list, including toggles, additions, and deletions. Choose a path (prefilled from `-export-images`, or `reviewed-images.json`), then press `Enter`. If the file exists, a second `Enter` confirms replacement; `Esc` cancels without changing it. Save errors stay inline so you can correct the path and retry. This action uses the same importable JSON format as the automatic `-export-images` discovery export, which still runs before any review edits.
+Press `e` on Review to save your **current** image list, including toggles, additions, and deletions. Choose a path (prefilled from `-export-images`, or `reviewed-images.json`), then press `Enter`. If the file exists, a second `Enter` confirms replacement; `Esc` cancels without changing it. Save errors stay inline so you can correct the path and retry. This action uses the same importable JSON format as the automatic `-export-images` discovery export, which still runs before any review edits. An explicitly imported empty list (`[]`) stays empty, allowing a saved chart-only review to be restored without reselecting discovered images.
 
 Import rejects invalid image references with a non-zero error when entering Review so a bad edit fails closed at load time rather than after pull retries.
 
