@@ -48,7 +48,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.filterValue = ""
 		m.refreshResults()
 		if len(typed.packages) == 0 {
-			m.setStatus("No charts found. Try a different query.")
+			m.setWarning("No charts found. Try a different query.")
 		} else {
 			m.clearStatus()
 		}
@@ -61,7 +61,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.errStep = ""
 		m.versions.SetItems(versionsToItems(typed.versions))
 		if len(typed.versions) == 0 {
-			m.setStatus("No versions returned for this chart.")
+			m.setWarning("No versions returned for this chart.")
 		} else {
 			m.clearStatus()
 		}
@@ -553,7 +553,7 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if len(m.reviewImages) == 0 {
 			if warn := m.reviewSafetyWarning(); warn != "" && !m.reviewWarnAck {
 				m.reviewWarnAck = true
-				m.setStatus(warn)
+				m.setWarning(warn)
 				return m, nil
 			}
 			m.clearStatus()
@@ -565,12 +565,12 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				bundleCmd(m.pipeline, m.prepared, m.selectedPkg, m.selectedVersion, nil))
 		}
 		if m.countSelected() == 0 {
-			m.setStatus("Select at least one image (space), or press a to add one.")
+			m.setWarning("Select at least one image (space), or press a to add one.")
 			return m, nil
 		}
 		if warn := m.reviewSafetyWarning(); warn != "" && !m.reviewWarnAck {
 			m.reviewWarnAck = true
-			m.setStatus(warn)
+			m.setWarning(warn)
 			return m, nil
 		}
 		m.clearStatus()
@@ -630,7 +630,7 @@ func (m model) handleAddImageKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		if !images.ValidRef(ref) {
 			// Stay on add screen so the user can edit; do not abort review.
-			m.setStatus("Invalid image reference.")
+			m.setWarning("Invalid image reference.")
 			return m, nil
 		}
 		m.reviewImages = append(m.reviewImages, images.Image{Ref: ref, Selected: true})

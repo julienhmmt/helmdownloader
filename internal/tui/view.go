@@ -93,7 +93,7 @@ func (m model) viewList(body string) string {
 		lines = append(lines, "", m.sortFilterStatus())
 	}
 	if m.status != "" {
-		lines = append(lines, "", m.styles.errorMsg.Render(m.status))
+		lines = append(lines, "", m.statusStyle().Render(m.status))
 	}
 	lines = append(lines, m.renderHelp(m.listHelp()))
 	return strings.Join(lines, "\n")

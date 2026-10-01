@@ -48,6 +48,7 @@ func TestSearchResultMsg_EmptyPackagesSetsStatus(t *testing.T) {
 	m2 := got.(model)
 	assert.Equal(t, stateResults, m2.state)
 	assert.Contains(t, m2.status, "No charts found")
+	assert.True(t, m2.statusWarn)
 }
 
 func TestSearchResultMsg_NonEmptyClearsStatus(t *testing.T) {
@@ -87,9 +88,20 @@ func TestHandleAddImageKey_InvalidRefSetsStatus(t *testing.T) {
 			m2 := got.(model)
 			assert.Equal(t, stateAddImage, m2.state)
 			assert.Contains(t, m2.status, "Invalid image reference")
+			assert.True(t, m2.statusWarn)
 			assert.Empty(t, m2.reviewImages)
 		})
 	}
+}
+
+func TestConfirmThemeMenu_StatusIsInfoNotWarning(t *testing.T) {
+	m := newTestModel()
+	m.state = stateThemeMenu
+	m.themeMenuReturn = stateSearch
+	m.setWarning("stale warning")
+	m.confirmThemeMenu()
+	assert.Contains(t, m.status, "Theme:")
+	assert.False(t, m.statusWarn)
 }
 
 func TestHandleAddImageKey_ValidRefAppendsAndClearsStatus(t *testing.T) {
