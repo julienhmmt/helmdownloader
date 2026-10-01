@@ -316,3 +316,13 @@ func TestViewDownloading_ShowsEscCancel(t *testing.T) {
 	assert.Contains(t, out, "esc")
 	assert.Contains(t, out, "cancel")
 }
+
+func TestViewDownloading_ShowsChartContext(t *testing.T) {
+	m := newTestModel()
+	m.state = stateDownloading
+	m.selectedPkg = artifacthub.Package{Name: "argo-cd"}
+	m.selectedVersion = "5.51.6"
+	out := m.render()
+	assert.Contains(t, out, "argo-cd")
+	assert.Contains(t, out, "5.51.6")
+}

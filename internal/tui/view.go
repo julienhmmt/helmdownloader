@@ -270,7 +270,8 @@ func (m model) viewDownloading() string {
 	}
 
 	body := lipgloss.JoinVertical(lipgloss.Left, lines...)
-	return m.screen("Downloading images", "", body, "esc cancel · ctrl+t themes · ctrl+c quit")
+	title := fmt.Sprintf("Downloading images · %s %s", m.selectedPkg.Name, m.selectedVersion)
+	return m.screen(title, "", body, "esc cancel · ctrl+t themes · ctrl+c quit")
 }
 
 // miniBar renders a width-cell ASCII progress bar for (written/total).
@@ -312,6 +313,7 @@ func (m model) byteLabel(written, total int64) string {
 func (m model) viewBundling() string {
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		fmt.Sprintf("%s %s", m.spinner.View(), m.styles.primary.Render("Assembling bundle…")),
+		m.styles.muted.Render("esc is disabled while the archive is written"),
 		"",
 		m.renderHelp("ctrl+c quit"),
 	)
