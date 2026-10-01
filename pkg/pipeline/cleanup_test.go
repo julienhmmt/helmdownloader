@@ -1,6 +1,9 @@
 package pipeline
 
 import (
+	"archive/tar"
+	"compress/gzip"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,8 +14,70 @@ import (
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
 	"github.com/julienhmmt/helmdownloader/pkg/bundle"
 	"github.com/julienhmmt/helmdownloader/pkg/config"
+	"github.com/julienhmmt/helmdownloader/pkg/images"
 	"github.com/julienhmmt/helmdownloader/pkg/log"
 )
+
+func TestMissingImageRefs_SelectedOnly(t *testing.T) {
+	var requested = []images.Image{{Ref: "a:1", Selected: true}, {Ref: "b:1", Selected: true}, {Ref: "c:1", Selected: false}, {Ref: "b:1", Selected: true}}
+	var cases = []struct {
+		name    string
+		entries []bundle.ImageEntry
+		want    []string
+	}{
+		{"partial", []bundle.ImageEntry{{SourceRef: "a:1"}}, []string{"b:1"}},
+		{"complete", []bundle.ImageEntry{{SourceRef: "b:1"}, {SourceRef: "a:1"}}, nil},
+		{"all failed", nil, []string{"a:1", "b:1"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, missingImageRefs(requested, tc.entries))
+		})
+	}
+}
+
+func TestBundle_RecordsPartialHandoff(t *testing.T) {
+	var work = t.TempDir()
+	var cfg = config.Default()
+	cfg.OutputDir = t.TempDir()
+	cfg.Platform = "linux/arm64"
+	cfg.RegistryPrefix = "mirror.local/team"
+	var chart = filepath.Join(work, "app.tgz")
+	require.NoError(t, os.WriteFile(chart, []byte("chart"), 0o600))
+	var prepared = Prepared{ChartPath: chart, WorkDir: work, TempWorkDir: true, Images: []images.Image{{Ref: "redis:7", Selected: true}, {Ref: "ignored:1", Selected: false}}}
+	var path, err = New(cfg, log.Discard()).Bundle(prepared, artifacthub.Package{Name: "app"}, "1", nil)
+	require.NoError(t, err)
+	require.NoError(t, bundle.Verify(path))
+	var file *os.File
+	file, err = os.Open(path)
+	require.NoError(t, err)
+	defer file.Close()
+	var reader *gzip.Reader
+	reader, err = gzip.NewReader(file)
+	require.NoError(t, err)
+	defer reader.Close()
+	var archive = tar.NewReader(reader)
+	for {
+		var header *tar.Header
+		header, err = archive.Next()
+		require.NoError(t, err)
+		if header.Name != "manifest.json" {
+			continue
+		}
+		var manifest struct {
+			Status         string   `json:"status"`
+			Platform       string   `json:"platform"`
+			RegistryPrefix string   `json:"registryPrefix"`
+			MissingImages  []string `json:"missingImages"`
+		}
+		require.NoError(t, json.NewDecoder(archive).Decode(&manifest))
+		assert.Equal(t, "partial", manifest.Status)
+		assert.Equal(t, cfg.Platform, manifest.Platform)
+		assert.Equal(t, cfg.RegistryPrefix, manifest.RegistryPrefix)
+		assert.Equal(t, []string{"redis:7"}, manifest.MissingImages)
+		break
+	}
+}
 
 func TestBundle_CleansHelmCacheFromPersistentWorkDir(t *testing.T) {
 	work := t.TempDir()

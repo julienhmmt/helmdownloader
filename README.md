@@ -319,13 +319,18 @@ images/
   <image1>.tar            # retagged image tarball
   <image2>.tar
 images.txt                # manifest: source_ref  dest_ref  tar_name  digest
-manifest.json             # provenance: tool, toolVersion, chart, codec, images + digests
+manifest.json             # provenance: tool, toolVersion, chart, codec, platform, registry prefix, status, missing images + digests
 sbom.spdx.json            # SPDX 2.3 SBOM: chart + images with pinned digests
 sha256sums.txt            # sha256 of every payload file including load.sh (sha256sum -c format)
 load.sh                   # verifies checksums, then loads and pushes every image
+HOWTO.txt                 # checksummed handoff instructions and completeness warning
 ```
 
 The `images.txt` manifest maps original references to their retagged counterparts and records the resolved manifest digest (`sha256:...`, or `-` when the registry reported none) of exactly what was bundled, making it easy to script and verify the import side on airgapped infrastructure.
+
+Every bundle includes a checksummed `HOWTO.txt` with chart/version, platform, registry prefix, codec-matched verification/extraction commands, and Docker/Podman loading guidance. Chart-only bundles omit image-loading instructions. Custom values and `-set` overrides used for discovery are **not bundled** as deployment values; supply those separately and set chart image references to the destinations in `images.txt` before installation.
+
+`manifest.json` records `status` (`complete` or `partial`) and, for partial bundles, `missingImages` containing selected/requested references not included in the archive. `HOWTO.txt` prominently lists those missing references. Completeness is relative to the reviewed selection (or every discovered image in batch), not a guarantee that best-effort discovery found every possible image. `verify` checks integrity, not completeness: an intact partial bundle still verifies successfully.
 
 An SPDX 2.3 JSON SBOM (`sbom.spdx.json`) lists the chart and every image with its pinned manifest digest, for ingestion into standard SBOM tooling on the airgapped side.
 
