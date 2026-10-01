@@ -506,6 +506,9 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if len(m.reviewImages) > 0 {
 			m.reviewImages[m.reviewCursor].Selected = !m.reviewImages[m.reviewCursor].Selected
 		}
+	case "i":
+		m.clearStatus()
+		invertSelected(m.reviewImages)
 	case "a":
 		m.clearStatus()
 		m.addInput.SetValue("")
@@ -730,6 +733,13 @@ func selectedRefs(imgs []images.Image) []string {
 		}
 	}
 	return refs
+}
+
+// invertSelected flips the selected flag on every image.
+func invertSelected(imgs []images.Image) {
+	for i := range imgs {
+		imgs[i].Selected = !imgs[i].Selected
+	}
 }
 
 // failureRefs returns the references of the given failures.

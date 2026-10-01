@@ -500,6 +500,20 @@ func TestHandleReviewKey_ImportEditsSurviveWarnAck(t *testing.T) {
 	assert.True(t, m4.reviewImages[1].Selected)
 }
 
+func TestHandleReviewKey_InvertSelect(t *testing.T) {
+	m := newTestModel()
+	m.state = stateReview
+	m.reviewImages = []images.Image{
+		{Ref: "a:1", Selected: true},
+		{Ref: "b:1", Selected: false},
+		{Ref: "c:1", Selected: true},
+	}
+	got, _ := m.handleReviewKey(keyPress("i"))
+	m2 := got.(model)
+	assert.Equal(t, []bool{false, true, false},
+		[]bool{m2.reviewImages[0].Selected, m2.reviewImages[1].Selected, m2.reviewImages[2].Selected})
+}
+
 func TestHandleReviewKey_DeprecatedRequiresSecondEnter(t *testing.T) {
 	m := newTestModel()
 	m.state = stateReview
