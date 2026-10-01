@@ -674,7 +674,7 @@ func (m model) handleSaveImagesKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m model) submitReviewSave() (tea.Model, tea.Cmd) {
 	var path = strings.TrimSpace(m.saveInput.Value())
 	if path == "" {
-		m.setStatus("Enter a file path to save the reviewed list.")
+		m.setWarning("Enter a file path to save the reviewed list.")
 		return m, nil
 	}
 	m.clearStatus()
@@ -689,12 +689,12 @@ func (m model) finishReviewSave(msg savedReviewMsg) (tea.Model, tea.Cmd) {
 	m.state = stateSaveImages
 	if msg.overwriteRequired {
 		m.saveOverwritePath = msg.path
-		m.setStatus("File exists. Press enter again to overwrite, or esc to cancel.")
+		m.setWarning("File exists. Press enter again to overwrite, or esc to cancel.")
 		return m, nil
 	}
 	m.saveOverwritePath = ""
 	if msg.err != nil {
-		m.setStatus(msg.err.Error())
+		m.setWarning(msg.err.Error())
 		return m, nil
 	}
 	m.saveInput.Blur()
