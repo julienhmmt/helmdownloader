@@ -41,6 +41,8 @@ func (m model) render() string {
 		return m.viewReview()
 	case stateAddImage:
 		return m.viewAddImage()
+	case stateSaveImages, stateSavingImages:
+		return m.viewSaveImages()
 	case stateDownloading:
 		return m.viewDownloading()
 	case stateDownloadReview:
@@ -210,9 +212,9 @@ func (m model) viewReview() string {
 		m.cfg.RegistryPrefix, m.cfg.Platform, m.cfg.OutputDir))
 	body := lipgloss.JoinVertical(lipgloss.Left, rows.String(), "", meta)
 	// Chart-only chart: "download" is misleading with nothing to pull.
-	help := "space toggle · a add · d delete · j/k move · pgup/pgdn page · g/G jump · enter download · ctrl+t themes · esc back"
+	help := "space toggle · a add · d delete · e save review · j/k move · pgup/pgdn page · g/G jump · enter download · ctrl+t themes · esc back"
 	if len(m.reviewImages) == 0 {
-		help = "enter bundle chart (no images) · a add · ctrl+t themes · esc back"
+		help = "enter bundle chart (no images) · a add · e save review · ctrl+t themes · esc back"
 	}
 	return m.screen(title, subtitle, body, help)
 }
@@ -220,6 +222,16 @@ func (m model) viewReview() string {
 // viewAddImage renders the manual image entry prompt.
 func (m model) viewAddImage() string {
 	return m.screen("Add an image reference", "", m.addInput.View(), "enter add · ctrl+t themes · esc cancel")
+}
+
+func (m model) viewSaveImages() string {
+	var help = "enter save · ctrl+t themes · esc cancel"
+	var subtitle = "Save the current selection, including added and deselected images"
+	if m.state == stateSavingImages {
+		subtitle = "Saving reviewed images…"
+		help = "ctrl+c quit"
+	}
+	return m.screen("Save reviewed images", subtitle, m.saveInput.View(), help)
 }
 
 // viewDownloading renders the download progress screen: an aggregate bar

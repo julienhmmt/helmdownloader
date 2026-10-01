@@ -52,3 +52,9 @@ type doneMsg struct {
 type errMsg struct {
 	err error
 }
+
+type savedReviewMsg struct {
+	path              string
+	overwriteRequired bool
+	err               error
+}

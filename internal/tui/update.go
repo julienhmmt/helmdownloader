@@ -102,6 +102,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+	case savedReviewMsg:
+		return m.finishReviewSave(typed)
 	case progressMsg:
 		if m.state != stateDownloading {
 			return m, nil
@@ -172,6 +174,8 @@ func (m model) updateComponents(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.search, cmd = m.search.Update(msg)
 	case stateAddImage:
 		m.addInput, cmd = m.addInput.Update(msg)
+	case stateSaveImages:
+		m.saveInput, cmd = m.saveInput.Update(msg)
 	case stateFilterInput:
 		m.filter, cmd = m.filter.Update(msg)
 	case stateResults:
@@ -198,7 +202,7 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		// Do not interrupt in-flight busy work with a palette picker.
 		switch m.state {
-		case stateSearching, statePreparing, stateDownloading, stateBundling:
+		case stateSearching, statePreparing, stateDownloading, stateBundling, stateSavingImages:
 			return m, nil
 		}
 		m.openThemeMenu()
@@ -217,6 +221,8 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleReviewKey(msg)
 	case stateAddImage:
 		return m.handleAddImageKey(msg)
+	case stateSaveImages, stateSavingImages:
+		return m.handleSaveImagesKey(msg)
 	case stateDownloadReview:
 		return m.handleDownloadReviewKey(msg)
 	case stateThemeMenu:
@@ -503,6 +509,16 @@ func (m model) handleReviewKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.addInput.Focus()
 		m.state = stateAddImage
 		return m, nil
+	case "e":
+		m.clearStatus()
+		m.saveOverwritePath = ""
+		var path = m.cfg.ExportImages
+		if path == "" {
+			path = m.saveInput.Placeholder
+		}
+		m.saveInput.SetValue(path)
+		m.state = stateSaveImages
+		return m, m.saveInput.Focus()
 	case "d":
 		if len(m.reviewImages) > 0 {
 			m.reviewImages = append(m.reviewImages[:m.reviewCursor], m.reviewImages[m.reviewCursor+1:]...)
@@ -611,6 +627,57 @@ func (m model) handleAddImageKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m.updateComponents(msg)
+}
+
+func (m model) handleSaveImagesKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.state == stateSavingImages {
+		return m, nil
+	}
+	switch msg.String() {
+	case "esc":
+		m.saveInput.Blur()
+		m.clearStatus()
+		m.saveOverwritePath = ""
+		m.state = stateReview
+		return m, nil
+	case "enter":
+		return m.submitReviewSave()
+	}
+	m.saveOverwritePath = ""
+	m.clearStatus()
+	return m.updateComponents(msg)
+}
+
+func (m model) submitReviewSave() (tea.Model, tea.Cmd) {
+	var path = strings.TrimSpace(m.saveInput.Value())
+	if path == "" {
+		m.setStatus("Enter a file path to save the reviewed list.")
+		return m, nil
+	}
+	m.clearStatus()
+	m.state = stateSavingImages
+	return m, saveReviewCmd(path, m.reviewImages, m.saveOverwritePath == path)
+}
+
+func (m model) finishReviewSave(msg savedReviewMsg) (tea.Model, tea.Cmd) {
+	if m.state != stateSavingImages {
+		return m, nil
+	}
+	m.state = stateSaveImages
+	if msg.overwriteRequired {
+		m.saveOverwritePath = msg.path
+		m.setStatus("File exists. Press enter again to overwrite, or esc to cancel.")
+		return m, nil
+	}
+	m.saveOverwritePath = ""
+	if msg.err != nil {
+		m.setStatus(msg.err.Error())
+		return m, nil
+	}
+	m.saveInput.Blur()
+	m.state = stateReview
+	m.setStatus("Saved reviewed images to " + msg.path)
+	return m, nil
 }
 
 // handleEndKey processes the terminal done/error screens.

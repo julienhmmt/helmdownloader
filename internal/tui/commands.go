@@ -2,12 +2,14 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/julienhmmt/helmdownloader/pkg/artifacthub"
 	"github.com/julienhmmt/helmdownloader/pkg/bundle"
+	"github.com/julienhmmt/helmdownloader/pkg/images"
 	"github.com/julienhmmt/helmdownloader/pkg/pipeline"
 )
 
@@ -118,5 +120,19 @@ func cleanupCmd(dir string, temp bool) tea.Cmd {
 			_ = os.RemoveAll(dir)
 		}
 		return nil
+	}
+}
+
+func saveReviewCmd(path string, imgs []images.Image, overwrite bool) tea.Cmd {
+	var snapshot = append([]images.Image(nil), imgs...)
+	return func() tea.Msg {
+		if !overwrite {
+			if _, err := os.Lstat(path); err == nil {
+				return savedReviewMsg{path: path, overwriteRequired: true}
+			} else if !os.IsNotExist(err) {
+				return savedReviewMsg{path: path, err: fmt.Errorf("check review path: %w", err)}
+			}
+		}
+		return savedReviewMsg{path: path, err: exportImages(path, snapshot)}
 	}
 }

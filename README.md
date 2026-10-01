@@ -96,8 +96,9 @@ After you quit, a plain-text summary stays in the terminal scrollback for every 
 | Results | `Enter` select, `/` fuzzy, `s` sort field, `o` sort dir, `f` field, `F` value, `Tab` cycle values, `Ctrl+T` themes, `Esc` back | Browse matching charts; official/deprecated badges on title; meta line shows stars, repo, publisher, app |
 | Filter | `Enter` apply, `Tab` cycle values, `Ctrl+T` themes, `Esc` cancel | Type a substring to filter by author or company |
 | Versions | `Enter` to select, `/` to filter, `Ctrl+T` themes, `Esc` to back | Pick a chart version |
-| Review | `Space` toggle, `a` add, `d` delete, `j`/`k` move, `PgUp`/`PgDn` (or `Ctrl+u`/`Ctrl+d`) page, `g`/`G` jump, `Enter` download, `Ctrl+T` themes, `Esc` back | Review auto-discovered images; long lists are windowed |
+| Review | `Space` toggle, `a` add, `d` delete, `e` save review, `j`/`k` move, `PgUp`/`PgDn` (or `Ctrl+u`/`Ctrl+d`) page, `g`/`G` jump, `Enter` download, `Ctrl+T` themes, `Esc` back | Review auto-discovered images; long lists are windowed |
 | Add Image | `Enter` confirm, `Ctrl+T` themes, `Esc` cancel | Manually add an image reference |
+| Save Review | `Enter` save (again to confirm overwrite), `Ctrl+T` themes, `Esc` cancel | Choose a JSON path for the current reviewed image list |
 | Download | `Esc` cancel (back to review or partial results), `Ctrl+T` themes, `Ctrl+C` quit | Pulls images; partial successes are kept |
 | Done | `a` add another chart, `n` new session, `Ctrl+T` themes, `q` quit | Path, image counts, size, and next steps (`verify` / extract). `a` chains another chart into the same session; each chart still ships its own bundle and all session bundles are listed here |
 | Theme | `j`/`k` move, `1`–`6` jump, `Enter` apply, `Esc` cancel | Pick a palette with live preview (`Ctrl+T` from most screens) |
@@ -214,6 +215,8 @@ Use `-export-images` and `-import-images` to review the discovered image list wi
 #    set when the Review screen opens (you can still toggle/edit before Enter).
 ./helmdownloader -import-images images.json
 ```
+
+Press `e` on Review to save your **current** image list, including toggles, additions, and deletions. Choose a path (prefilled from `-export-images`, or `reviewed-images.json`), then press `Enter`. If the file exists, a second `Enter` confirms replacement; `Esc` cancels without changing it. Save errors stay inline so you can correct the path and retry. This action uses the same importable JSON format as the automatic `-export-images` discovery export, which still runs before any review edits.
 
 Import rejects invalid image references with a non-zero error when entering Review so a bad edit fails closed at load time rather than after pull retries.
 
