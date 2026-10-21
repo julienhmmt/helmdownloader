@@ -60,6 +60,8 @@ Used for `-values` and `-set`. Do not invent a second pattern.
 | Platform | `-platform` | `linux/amd64` |
 | OutputDir | `-output` | `archives` |
 | WorkDir | `-work-dir` | temp |
+| TempDir | `-temp-dir` | system temp |
+| Theme | `-theme` | `auto` |
 | Concurrency | `-concurrency` | `4` |
 | Retries | `-retries` | `2` |
 | HTTPSProxy | `-proxy` | env fallback |
@@ -75,6 +77,7 @@ Used for `-values` and `-set`. Do not invent a second pattern.
 | ArtifactHubURL | (config only) | `https://artifacthub.io` |
 | SearchLimit | (config only) | `20` |
 | LogLevel / LogFile / Verbose | `-log-level`, `-log-file`, `-v` | |
+| (path of this file) | `-config` | `DefaultPath()` |
 
 ## Validation
 
