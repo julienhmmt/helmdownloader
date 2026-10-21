@@ -21,6 +21,8 @@ Charm Bubble Tea **v2** (`charm.land/bubbletea/v2`, bubbles, lipgloss).
 | `messages.go` | Message types from async work |
 | `items.go` | list.Item implementations for charts/versions |
 | `imagelist.go` | Review-screen image list helpers |
+| `review_list.go` | Windowed Review list rendering |
+| `hover_delegate.go` | List delegate with hover/selection styling |
 | `sortfilter.go` | Results sort/filter projection (client-side only) |
 | `styles.go` / `chrome.go` | Styles and chrome |
 | `convert.go` | Domain ↔ UI conversions |
@@ -36,20 +38,18 @@ stateSearch → stateSearching → stateResults → stateFilterInput
   → stateVersions → statePreparing → stateReview → stateAddImage
   → stateDownloading → stateDownloadReview → stateBundling
   → stateDone | stateError
+
+stateReview → stateSaveImages → stateSavingImages   (`e` save review)
+any screen  → stateThemeMenu                         (`Ctrl+T`)
 ```
 
 Adding a screen: new `state` constant → keys in `update.go` → view branch →
 messages/cmds if async.
 
-## Keys (user-facing; keep in sync with README)
+## Keys
 
-| Screen | Important keys |
-| ------ | -------------- |
-| Search | Enter search, Esc quit |
-| Results | Enter select, `/` fuzzy, `s` sort field, `o` sort dir, `f` filter field, `F` type filter, Tab cycle values |
-| Versions | Enter, `/`, Esc |
-| Review | Space toggle, `a` add, `d` delete, Enter download, Esc back |
-| Done | `n` new, `q` quit |
+The README "Screens" table is the canonical key reference. Any key change in
+`update.go` must update it in the same commit.
 
 ## Async work
 

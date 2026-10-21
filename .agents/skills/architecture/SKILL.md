@@ -31,10 +31,12 @@ owns orchestration.
 | `pkg/registry` | Daemonless pull | `Puller.Save(ctx, src, dest, path, onBytes) (digest, err)` |
 | `pkg/bundle` | Archive + verify | `Create(Spec)`, `Verify`, `Diff`; codecs in `compress.go` |
 | `pkg/pipeline` | Orchestration | `Prepare`, `Download`, `Bundle`; seams `imageSaver`, `helmClient` |
+| `pkg/batch` | Headless batch mode | `ParseList`, `ChartRef`, `Run` (Prepare → Download → Bundle per chart, no TUI) |
 | `pkg/log` | File logger | silent / info / debug |
 | `internal/tui` | Bubble Tea UI | model / update / view / commands split |
 
-`main` also hosts non-TUI subcommands: `verify`, `diff` → `bundle.Verify` / `bundle.Diff`.
+`main` also hosts non-TUI subcommands: `verify`, `diff` → `bundle.Verify` /
+`bundle.Diff`; `batch` → `batch.Run`; `version`.
 
 ## Design invariants (do not break)
 
