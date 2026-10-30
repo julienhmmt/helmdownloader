@@ -60,44 +60,27 @@ install:
 	go install .
 
 # ---------------------------------------------------------------------------
-# SonarQube (local container, single Go project: helmdownloader)
+# SonarQube (shared local server, see $(SONAR_HOME)/README.md)
 # ---------------------------------------------------------------------------
-COMPOSE_SONAR := docker compose -f docker-compose.sonarqube.yml
+SONAR_HOME ?= $(HOME)/git/gh/sonarqube
 
-.PHONY: sonar-up sonar-down sonar-logs sonar-status sonar-bootstrap sonar-coverage sonar-scan sonar-scan-server sonar-query sonar-clean
+.PHONY: sonar sonar-up sonar-down sonar-coverage sonar-scan sonar-query
 
-sonar-up: ## Start the SonarQube server (http://localhost:9000)
-	$(COMPOSE_SONAR) up -d sonarqube
+sonar: sonar-scan ## Generate coverage and scan into the shared SonarQube
 
-sonar-down: ## Stop the SonarQube server
-	$(COMPOSE_SONAR) down
+sonar-up: ## Start the shared SonarQube server (http://localhost:9000)
+	@$(MAKE) -C $(SONAR_HOME) up
 
-sonar-logs: ## Follow SonarQube logs
-	$(COMPOSE_SONAR) logs -f sonarqube
-
-sonar-status: ## Check SonarQube server status
-	@docker ps --filter "name=helmdownloader-sonarqube" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-
-sonar-bootstrap: ## Provision or rotate the SonarQube analysis token
-	@chmod +x tools/sonar-bootstrap.sh
-	@tools/sonar-bootstrap.sh
-	@echo "SonarQube token ready in .sonar/token"
+sonar-down: ## Stop the shared SonarQube server
+	@$(MAKE) -C $(SONAR_HOME) down
 
 sonar-coverage: ## Generate Go coverage reports for SonarQube
 	@chmod +x tools/sonar-coverage.sh
 	@GO_TEST_FLAGS="$(GO_TEST_FLAGS)" SERVER_DIR="$(SERVER_DIR)" tools/sonar-coverage.sh
 	@echo "Coverage reports ready in .sonar/"
 
-sonar-scan: sonar-coverage ## Run SonarScanner for the Go project (requires sonar-up + sonar-bootstrap)
-	@chmod +x tools/sonar-scan.sh
-	@tools/sonar-scan.sh
-
-sonar-scan-server: ## Scan only the Go project (server short name)
-	@chmod +x tools/sonar-scan.sh
-	@tools/sonar-scan.sh server
+sonar-scan: sonar-coverage ## Scan into the shared SonarQube (starts it if needed)
+	@$(SONAR_HOME)/scan.sh
 
 sonar-query: ## Query SonarQube results (usage: make sonar-query CMD="summary")
-	@python3 tools/sonar-query.py $(CMD)
-
-sonar-clean: sonar-down ## Stop SonarQube and remove its local data and token
-	rm -rf .sonar
+	@python3 $(SONAR_HOME)/query.py $(CMD)
