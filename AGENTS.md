@@ -15,7 +15,7 @@ and pushes every image on the airgapped side.
 
 Also: `helmdownloader verify <bundle>` and `helmdownloader diff <a> <b>`.
 
-Module: `github.com/julienhmmt/helmdownloader` · Go **1.26+** · License **AGPL-3.0**
+Module: `github.com/julienhmmt/helmdownloader` · Go **1.27+** · License **AGPL-3.0**
 
 ## When to use which skill
 
