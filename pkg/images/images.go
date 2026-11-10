@@ -28,9 +28,17 @@ func Extract(sources ...string) []Image {
 	for _, source := range sources {
 		decoder := yaml.NewDecoder(strings.NewReader(source))
 		for {
+			// Decode into a Node first: this skips yaml.v3's duplicate-key
+			// check, which would otherwise abort the stream and silently drop
+			// every later document's images.
+			var node yaml.Node
+			if err := decoder.Decode(&node); err != nil {
+				break // EOF, or a syntax error the parser cannot resync from
+			}
+			dropDuplicateKeys(&node)
 			var doc any
-			if err := decoder.Decode(&doc); err != nil {
-				break
+			if err := node.Decode(&doc); err != nil {
+				continue // skip only this document
 			}
 			collectImages(doc, seen)
 		}
@@ -45,6 +53,32 @@ func Extract(sources ...string) []Image {
 		result = append(result, Image{Ref: ref, Selected: true})
 	}
 	return result
+}
+
+// dropDuplicateKeys removes earlier occurrences of a repeated mapping key so
+// the last one wins, matching how Kubernetes and Helm read such documents.
+// yaml.v3 refuses to decode a mapping with duplicate keys.
+func dropDuplicateKeys(n *yaml.Node) {
+	if n.Kind == yaml.MappingNode {
+		last := map[string]int{}
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			if k := n.Content[i]; k.Kind == yaml.ScalarNode && k.Value != "<<" {
+				last[k.Value] = i
+			}
+		}
+		kept := make([]*yaml.Node, 0, len(n.Content))
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			k := n.Content[i]
+			if k.Kind == yaml.ScalarNode && k.Value != "<<" && last[k.Value] != i {
+				continue
+			}
+			kept = append(kept, k, n.Content[i+1])
+		}
+		n.Content = kept
+	}
+	for _, child := range n.Content {
+		dropDuplicateKeys(child)
+	}
 }
 
 // collectImages walks an arbitrary YAML node, recording image references held

@@ -268,3 +268,53 @@ func TestUnpinned(t *testing.T) {
 		})
 	}
 }
+
+func refsOf(list []images.Image) []string {
+	refs := make([]string, 0, len(list))
+	for _, img := range list {
+		refs = append(refs, img.Ref)
+	}
+	return refs
+}
+
+func TestExtract_DuplicateKeyDocDoesNotDropLaterDocs(t *testing.T) {
+	manifests := `
+spec:
+  image: one:1
+---
+metadata:
+  labels:
+    app: a
+    app: b
+spec:
+  image: two:2
+---
+spec:
+  image: three:3
+`
+	assert.Equal(t, []string{"one:1", "three:3", "two:2"}, refsOf(images.Extract(manifests)))
+}
+
+func TestExtract_DuplicateImageKeyLastWins(t *testing.T) {
+	source := `
+spec:
+  image: old:1
+  image: new:2
+`
+	assert.Equal(t, []string{"new:2"}, refsOf(images.Extract(source)))
+}
+
+func TestExtract_MergeKeysStillResolve(t *testing.T) {
+	source := `
+base: &b
+  image: four:4
+use:
+  <<: *b
+`
+	assert.Equal(t, []string{"four:4"}, refsOf(images.Extract(source)))
+}
+
+func TestExtract_SyntaxErrorStopsOnlyThatSource(t *testing.T) {
+	got := images.Extract("a: [unclosed", "spec:\n  image: five:5\n")
+	assert.Equal(t, []string{"five:5"}, refsOf(got))
+}
