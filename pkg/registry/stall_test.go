@@ -2,9 +2,9 @@ package registry
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -72,13 +72,18 @@ func TestStallFixture_PullWorksWhenNotStalling(t *testing.T) {
 	}
 }
 
-func TestSave_StalledBlobDoesNotReturnOnItsOwn(t *testing.T) {
+func TestSave_StalledBlobFailsAfterIdleTimeout(t *testing.T) {
 	ref, stall := newStallFixture(t)
 	dest := filepath.Join(t.TempDir(), "img.tar")
 	stall.Store(true)
 
-	const deadline = 3 * time.Second
-	ctx, cancel := context.WithTimeout(context.Background(), deadline)
+	prev := pullIdleTimeout
+	pullIdleTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { pullIdleTimeout = prev })
+
+	// Safety net only: the idle timeout should end the pull long before this.
+	const safety = 10 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), safety)
 	defer cancel()
 
 	p := NewPuller("linux/amd64", "", false, log.Discard())
@@ -87,10 +92,13 @@ func TestSave_StalledBlobDoesNotReturnOnItsOwn(t *testing.T) {
 	elapsed := time.Since(start)
 
 	t.Logf("Save returned after %v with err=%v", elapsed, err)
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("expected Save to end only on the context deadline, got err=%v after %v", err, elapsed)
+	if err == nil {
+		t.Fatal("expected Save to fail on a stalled blob")
 	}
-	if elapsed < deadline-100*time.Millisecond {
-		t.Fatalf("Save returned early after %v", elapsed)
+	if elapsed >= safety/2 {
+		t.Fatalf("Save took %v; idle timeout did not fire", elapsed)
+	}
+	if _, statErr := os.Stat(dest); !os.IsNotExist(statErr) {
+		t.Fatalf("destination should not exist after a failed pull, stat err=%v", statErr)
 	}
 }
