@@ -60,11 +60,17 @@ func importImages(path string) ([]images.Image, error) {
 		return nil, fmt.Errorf("parse image list %s: %w", path, err)
 	}
 	imgs := make([]images.Image, len(entries))
+	seen := make(map[string]struct{}, len(entries))
 	for i, e := range entries {
 		if !images.ValidRef(e.Ref) {
 			return nil, fmt.Errorf("image list %s: entry %d: invalid image ref %q", path, i, e.Ref)
 		}
-		imgs[i] = images.Image{Ref: strings.TrimSpace(e.Ref), Selected: e.Selected}
+		ref := strings.TrimSpace(e.Ref)
+		if _, dup := seen[ref]; dup {
+			return nil, fmt.Errorf("image list %s: entry %d: duplicate image ref %q", path, i, ref)
+		}
+		seen[ref] = struct{}{}
+		imgs[i] = images.Image{Ref: ref, Selected: e.Selected}
 	}
 	return imgs, nil
 }

@@ -503,3 +503,17 @@ func TestConcurrency_FloorsAtOne(t *testing.T) {
 	pl = newTestPipeline(&fakeSaver{}, 8)
 	assert.Equal(t, 8, pl.concurrency())
 }
+
+func TestDownload_DeduplicatesRefs(t *testing.T) {
+	refs := []string{"quay.io/a/x:1", "quay.io/b/y:2", "quay.io/a/x:1"}
+	saver := &fakeSaver{}
+	pl := newTestPipeline(saver, 4)
+
+	entries, failures, err := pl.Download(context.Background(), Prepared{WorkDir: t.TempDir()}, refs, nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, failures)
+	require.Len(t, entries, 2)
+	assert.Equal(t, "quay.io/a/x:1", entries[0].SourceRef)
+	assert.Equal(t, "quay.io/b/y:2", entries[1].SourceRef)
+	assert.Equal(t, 1, saver.attemptCount("quay.io/a/x:1"))
+}

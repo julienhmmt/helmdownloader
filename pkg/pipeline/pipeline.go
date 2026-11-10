@@ -186,6 +186,8 @@ type ImageFailure struct {
 // which may not match the position of ref in refs because pulls finish out of
 // order.
 func (p *Pipeline) Download(ctx context.Context, prepared Prepared, refs []string, progress ProgressFunc, byteProgress ByteProgressFunc) ([]bundle.ImageEntry, []ImageFailure, error) {
+	// A repeated ref would start two workers truncating the same tarball.
+	refs = uniqueRefs(refs)
 	limit := p.concurrency()
 	p.logger.Infof("downloading %d images (concurrency %d)", len(refs), limit)
 	imagesDir := filepath.Join(prepared.WorkDir, "images")
@@ -516,6 +518,20 @@ func tarballComplete(tarPath string) bool {
 }
 
 var unsafeChars = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
+
+// uniqueRefs returns refs without repeats, keeping first-occurrence order.
+func uniqueRefs(refs []string) []string {
+	seen := make(map[string]struct{}, len(refs))
+	out := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		if _, dup := seen[ref]; dup {
+			continue
+		}
+		seen[ref] = struct{}{}
+		out = append(out, ref)
+	}
+	return out
+}
 
 // tarballName derives a filesystem-safe tar filename from an image reference.
 // A short hash of the original ref is appended so two distinct refs that
