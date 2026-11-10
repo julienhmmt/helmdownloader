@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -138,4 +139,55 @@ func TestIsolatedHelmEnv_PointsAtPrivateHome(t *testing.T) {
 	assert.True(t, info.IsDir())
 	_, err = os.Stat(wantConfig)
 	assert.True(t, os.IsNotExist(err), "repositories.yaml must not be created")
+}
+
+// fakeHelm writes a script standing in for helm: it creates
+// "<--destination>/renamed-1.0.0.tgz" and exits 0.
+func fakeHelm(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "helm")
+	script := `#!/bin/sh
+dest=""
+while [ $# -gt 0 ]; do
+  if [ "$1" = "--destination" ]; then dest="$2"; fi
+  shift
+done
+echo chart > "$dest/renamed-1.0.0.tgz"
+`
+	require.NoError(t, os.WriteFile(path, []byte(script), 0o755))
+	return path
+}
+
+func TestPull_IgnoresStaleArchiveInWorkDir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a POSIX shell")
+	}
+	work := t.TempDir()
+	stale := filepath.Join(work, "aaa-stale.tgz")
+	require.NoError(t, os.WriteFile(stale, []byte("old"), 0o644))
+
+	res, err := New(fakeHelm(t), "", log.Discard()).Pull(context.Background(), "app", "https://example.invalid", "1.0.0", work, false)
+	require.NoError(t, err)
+	assert.Equal(t, "renamed-1.0.0.tgz", filepath.Base(res.ChartPath))
+	_, err = os.Stat(stale)
+	assert.NoError(t, err, "user file in work dir must not be touched")
+}
+
+func TestPull_ClearsPreviousPullArchives(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a POSIX shell")
+	}
+	work := t.TempDir()
+	client := New(fakeHelm(t), "", log.Discard())
+
+	first, err := client.Pull(context.Background(), "app", "https://example.invalid", "1.0.0", work, false)
+	require.NoError(t, err)
+	old := filepath.Join(filepath.Dir(first.ChartPath), "aaa-old.tgz")
+	require.NoError(t, os.Rename(first.ChartPath, old))
+
+	second, err := client.Pull(context.Background(), "app", "https://example.invalid", "1.0.0", work, false)
+	require.NoError(t, err)
+	assert.Equal(t, "renamed-1.0.0.tgz", filepath.Base(second.ChartPath))
+	_, err = os.Stat(old)
+	assert.True(t, os.IsNotExist(err), "previous pull archive must be removed")
 }

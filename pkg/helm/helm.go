@@ -55,6 +55,32 @@ type PullResult struct {
 	Dir string
 }
 
+// chartPullDir is the subdirectory of the work dir that receives pulled chart
+// archives. Keeping it separate means findChart's "any .tgz" fallback can only
+// see the current pull, never a leftover or user file in the work dir.
+const chartPullDir = "chart-pull"
+
+// resetChartPullDir ensures dir exists and holds no chart archive from an
+// earlier pull. It removes only regular *.tgz files: the work dir may be
+// user-owned, so nothing is deleted recursively.
+func resetChartPullDir(dir string) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create chart pull dir: %w", err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("read chart pull dir: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.Type().IsRegular() && strings.HasSuffix(entry.Name(), ".tgz") {
+			if err := os.Remove(filepath.Join(dir, entry.Name())); err != nil {
+				return fmt.Errorf("remove stale chart archive: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
 // Pull downloads chart version from its repository into destDir. repoURL is the
 // Helm repo URL from ArtifactHub; oci indicates an OCI-hosted chart.
 func (c *Client) Pull(ctx context.Context, name, repoURL, version, destDir string, oci bool) (PullResult, error) {
@@ -67,7 +93,11 @@ func (c *Client) Pull(ctx context.Context, name, repoURL, version, destDir strin
 	} else {
 		args = append(args, name, "--repo", repoURL)
 	}
-	args = append(args, "--version", version, "--destination", destDir)
+	chartDir := filepath.Join(destDir, chartPullDir)
+	if err := resetChartPullDir(chartDir); err != nil {
+		return PullResult{}, err
+	}
+	args = append(args, "--version", version, "--destination", chartDir)
 	// Isolate helm's repository config and cache inside destDir so the pull never
 	// loads the user's global repositories.yaml. A stale or unreachable entry
 	// there — e.g. a repo removed without its cached index — otherwise breaks an
@@ -82,7 +112,7 @@ func (c *Client) Pull(ctx context.Context, name, repoURL, version, destDir strin
 	if _, err := c.runEnv(ctx, isolatedEnv, args...); err != nil {
 		return PullResult{}, err
 	}
-	chartPath, err := findChart(destDir, name, version)
+	chartPath, err := findChart(chartDir, name, version)
 	if err != nil {
 		return PullResult{}, err
 	}
