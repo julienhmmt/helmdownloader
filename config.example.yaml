@@ -20,7 +20,7 @@
 #   1. CLI flags (when set / non-sentinel)
 #   2. Values in this file
 #   3. Built-in defaults (see each field below)
-#   4. Environment fallback (proxy only: HTTP_PROXY, then HTTPS_PROXY)
+#   4. Environment (proxy only): the standard HTTPS_PROXY / HTTP_PROXY / NO_PROXY variables
 #
 # Unset YAML fields keep their defaults (Load unmarshals onto Default()).
 # A missing config file is not an error: defaults are used as-is.
@@ -123,8 +123,9 @@ resume: false
 
 # Proxy URL for ArtifactHub search, helm chart pulls, and registry image pulls.
 # Example: "http://proxy.domain.local:3128"
-# If left empty here and unset on the CLI, falls back to HTTP_PROXY, then
-# HTTPS_PROXY from the environment.
+# If left empty here and unset on the CLI, the standard proxy environment
+# variables apply (HTTPS_PROXY, HTTP_PROXY, NO_PROXY). A value set here or
+# with -proxy is used for every request and ignores NO_PROXY.
 # CLI: -proxy
 # Default: ""
 https_proxy: ""
