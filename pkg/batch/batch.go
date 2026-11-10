@@ -47,6 +47,9 @@ func run(ctx context.Context, client resolver, pl runner, refs []ChartRef, out i
 	total := len(refs)
 	var succeeded int
 	for i, ref := range refs {
+		if ctx.Err() != nil {
+			break
+		}
 		fmt.Fprintf(out, "[%d/%d] %s ... ", i+1, total, ref)
 		path, imgFailed, err := processChart(ctx, client, pl, ref)
 		if err != nil {
@@ -86,6 +89,11 @@ func processChart(ctx context.Context, client resolver, pl runner, ref ChartRef)
 	entries, failures, err := pl.Download(ctx, prep, imageRefs(prep.Images), nil, nil)
 	if err != nil {
 		return "", 0, err
+	}
+	// Download reports a cancelled pull as an image failure, not an error;
+	// do not turn an interrupted run into a PARTIAL bundle.
+	if err := ctx.Err(); err != nil {
+		return "", 0, fmt.Errorf("interrupted: %w", err)
 	}
 	path, err = pl.Bundle(prep, pkg, version, entries)
 	if err != nil {

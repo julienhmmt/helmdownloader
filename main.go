@@ -7,7 +7,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/julienhmmt/helmdownloader/internal/tui"
 	"github.com/julienhmmt/helmdownloader/pkg/batch"
@@ -270,7 +272,14 @@ func runBatch(args []string) {
 		os.Exit(1)
 	}
 
-	ctx := context.Background()
+	// Cancel on Ctrl+C / SIGTERM so in-flight pulls stop and the temp work dir
+	// is removed; a second signal kills the process the default way.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 	if err := helm.New(cfg.HelmBin, cfg.HTTPSProxy, logger).Check(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
