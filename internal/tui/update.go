@@ -116,13 +116,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.imageProgress[typed.ref] = imageProgress{written: typed.written, total: typed.total}
 		return m, waitForActivity(m.activity)
 	case downloadDoneMsg:
-		// Ignore completion after the user cancelled download and left the screen.
+		// Stale: the screen that issued this download is gone.
 		if m.state != stateDownloading {
 			return m, nil
 		}
 		m.entries = append(m.entries, typed.entries...)
 		m.failures = typed.failures
 		m.errStep = ""
+		if m.cancelling {
+			// The cancelled context is dead; install a fresh one for a retry.
+			m.cancelling = false
+			m.clearStatus()
+			m.ctx, m.cancel = context.WithCancel(context.Background())
+			m.imageProgress = map[string]imageProgress{}
+			if len(m.entries) > 0 {
+				m.state = stateDownloadReview
+			} else {
+				m.state = stateReview
+			}
+			return m, nil
+		}
 		if len(typed.failures) == 0 {
 			m.state = stateBundling
 			m.errStep = "bundle"
@@ -301,22 +314,20 @@ func (m model) handleBusyKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.errStep = ""
 		return m, cleanup
 	case stateDownloading:
+		if m.cancelling {
+			return m, nil
+		}
 		if !m.cancelArmed {
 			m.cancelArmed = true
 			m.setStatus("Press esc again to cancel the download.")
 			return m, nil
 		}
+		// Cancel the pulls but stay here: the download goroutine reports
+		// what finished, and downloadDoneMsg decides where to go next.
 		m.cancelArmed = false
-		m.clearStatus()
+		m.cancelling = true
+		m.setStatus("Cancelling… waiting for in-flight pulls to stop.")
 		m.cancel()
-		m.ctx, m.cancel = context.WithCancel(context.Background())
-		m.imageProgress = map[string]imageProgress{}
-		m.errStep = ""
-		if len(m.entries) > 0 {
-			m.state = stateDownloadReview
-		} else {
-			m.state = stateReview
-		}
 		return m, nil
 	case stateBundling:
 		// Bundle ignores ctx; cancelling mid-write risks a partial archive.

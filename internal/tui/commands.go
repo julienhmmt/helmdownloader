@@ -69,26 +69,16 @@ func downloadCmd(ctx context.Context, pl *pipeline.Pipeline, prepared pipeline.P
 					default:
 					}
 				})
-			// Terminal sends yield to context cancellation: on quit, ctx is
-			// cancelled and nobody drains activity, so a blocking send would
-			// leak this goroutine and hold open registry connections.
+			// Always deliver the final message: after a cancel the UI waits
+			// for it. If the program is quitting nobody receives, and this
+			// goroutine ends with the process.
 			if err != nil {
-				sendOrCancel(ctx, activity, errMsg{err})
+				activity <- errMsg{err}
 				return
 			}
-			sendOrCancel(ctx, activity, downloadDoneMsg{entries: entries, failures: failures})
+			activity <- downloadDoneMsg{entries: entries, failures: failures}
 		}()
 		return waitForActivity(activity)()
-	}
-}
-
-// sendOrCancel performs a terminal send that yields to context cancellation,
-// so a quit (which cancels ctx and stops draining activity) cannot leak the
-// download goroutine on its final send.
-func sendOrCancel(ctx context.Context, activity chan tea.Msg, msg tea.Msg) {
-	select {
-	case activity <- msg:
-	case <-ctx.Done():
 	}
 }
 
