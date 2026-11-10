@@ -16,6 +16,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 
 	"github.com/julienhmmt/helmdownloader/pkg/log"
@@ -86,13 +87,17 @@ func (p *Puller) buildOpts(ctx context.Context) ([]crane.Option, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse platform %q: %w", p.platform, err)
 	}
-	opts := []crane.Option{crane.WithPlatform(platform)}
+	base := http.RoundTripper(remote.DefaultTransport)
 	if p.proxy != "" {
 		transport, err := p.proxiedTransport()
 		if err != nil {
 			return nil, err
 		}
-		opts = append(opts, crane.WithTransport(transport))
+		base = transport
+	}
+	opts := []crane.Option{
+		crane.WithPlatform(platform),
+		crane.WithTransport(&idleTimeoutTransport{base: base, idle: pullIdleTimeout}),
 	}
 	if p.auth {
 		opts = append(opts, crane.WithAuthFromKeychain(authn.DefaultKeychain))
@@ -138,9 +143,10 @@ func (p *Puller) Save(ctx context.Context, srcRef, destRef, destPath string, onB
 	if err != nil {
 		return "", err
 	}
-	// Pull the image. The timeout configuration is not used here because
-	// crane.Pull returns a lazy-loading image that retains the context,
-	// which would cause the layer write below to time out during downloads.
+	// Pull the image. Total duration is unbounded on purpose: crane.Pull returns
+	// a lazy-loading image that retains the context, so a total timeout would
+	// cut off large layer downloads. Stalls are bounded by pullIdleTimeout
+	// through the transport set in buildOpts.
 	img, err := crane.Pull(srcRef, opts...)
 	if err != nil {
 		return "", fmt.Errorf("pull %s: %w", srcRef, err)
