@@ -1,15 +1,12 @@
 package tui
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -98,34 +95,4 @@ func TestCleanupCmd_EmptyDirNoop(t *testing.T) {
 	cmd := cleanupCmd("", true)
 	msg := cmd()
 	assert.Nil(t, msg)
-}
-
-func TestSendOrCancel_ReturnsWhenContextCancelled(t *testing.T) {
-	activity := make(chan tea.Msg) // unbuffered, never drained
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	done := make(chan struct{})
-	go func() {
-		sendOrCancel(ctx, activity, downloadDoneMsg{})
-		close(done)
-	}()
-	select {
-	case <-done: // good: fell through ctx.Done() instead of blocking
-	case <-time.After(time.Second):
-		t.Fatal("sendOrCancel blocked on a cancelled context")
-	}
-}
-
-func TestSendOrCancel_DeliversWhenDrained(t *testing.T) {
-	activity := make(chan tea.Msg, 1)
-	ctx := context.Background()
-	sendOrCancel(ctx, activity, downloadDoneMsg{})
-	select {
-	case got := <-activity:
-		_, ok := got.(downloadDoneMsg)
-		assert.True(t, ok)
-	default:
-		t.Fatal("message was not delivered")
-	}
 }

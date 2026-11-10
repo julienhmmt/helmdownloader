@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -345,7 +346,7 @@ func TestHandleBusyKey_FirstEscArmsDownloadCancel(t *testing.T) {
 	assert.Contains(t, m2.status, "esc again")
 }
 
-func TestHandleBusyKey_EscDownloadingReturnsReview(t *testing.T) {
+func TestHandleBusyKey_SecondEscWaitsForDownload(t *testing.T) {
 	m := newTestModel()
 	m.state = stateDownloading
 	m.errStep = "download"
@@ -353,20 +354,62 @@ func TestHandleBusyKey_EscDownloadingReturnsReview(t *testing.T) {
 	m2 := got.(model)
 	got, _ = m2.handleBusyKey(keyPress("esc"))
 	m3 := got.(model)
-	assert.Equal(t, stateReview, m3.state)
-	assert.Empty(t, m3.errStep)
+	assert.Equal(t, stateDownloading, m3.state)
+	assert.True(t, m3.cancelling)
 	assert.False(t, m3.cancelArmed)
-	assert.Empty(t, m3.status)
+	assert.Contains(t, m3.status, "Cancelling")
+	assert.Error(t, m3.ctx.Err())
+	// A third esc changes nothing.
+	got, _ = m3.handleBusyKey(keyPress("esc"))
+	m4 := got.(model)
+	assert.Equal(t, stateDownloading, m4.state)
+	assert.True(t, m4.cancelling)
+	assert.False(t, m4.cancelArmed)
 }
 
-func TestHandleBusyKey_EscDownloadingWithEntriesGoesDownloadReview(t *testing.T) {
+func TestDownloadDoneMsg_AfterCancelKeepsCompleted(t *testing.T) {
 	m := newTestModel()
 	m.state = stateDownloading
-	m.entries = []bundle.ImageEntry{{SourceRef: "x:1"}}
-	got, _ := m.handleBusyKey(keyPress("esc"))
+	m.cancelling = true
+	m.cancel()
+	got, _ := m.Update(downloadDoneMsg{
+		entries:  []bundle.ImageEntry{{SourceRef: "x:1"}},
+		failures: []pipeline.ImageFailure{{Ref: "y:1", Err: context.Canceled}},
+	})
 	m2 := got.(model)
-	got, _ = m2.handleBusyKey(keyPress("esc"))
-	assert.Equal(t, stateDownloadReview, got.(model).state)
+	assert.Equal(t, stateDownloadReview, m2.state)
+	assert.Len(t, m2.entries, 1)
+	assert.Len(t, m2.failures, 1)
+	assert.False(t, m2.cancelling)
+	assert.NoError(t, m2.ctx.Err())
+	assert.Empty(t, m2.status)
+}
+
+func TestDownloadDoneMsg_AfterCancelNothingDoneReturnsReview(t *testing.T) {
+	m := newTestModel()
+	m.state = stateDownloading
+	m.cancelling = true
+	m.cancel()
+	got, _ := m.Update(downloadDoneMsg{
+		failures: []pipeline.ImageFailure{{Ref: "y:1", Err: context.Canceled}},
+	})
+	m2 := got.(model)
+	assert.Equal(t, stateReview, m2.state)
+	assert.False(t, m2.cancelling)
+	assert.NoError(t, m2.ctx.Err())
+}
+
+func TestDownloadDoneMsg_AfterCancelDoesNotBundle(t *testing.T) {
+	m := newTestModel()
+	m.state = stateDownloading
+	m.cancelling = true
+	m.cancel()
+	got, _ := m.Update(downloadDoneMsg{
+		entries: []bundle.ImageEntry{{SourceRef: "x:1"}},
+	})
+	m2 := got.(model)
+	assert.Equal(t, stateDownloadReview, m2.state)
+	assert.NotEqual(t, stateBundling, m2.state)
 }
 
 func TestHandleBusyKey_OtherKeyDisarmsDownloadCancel(t *testing.T) {

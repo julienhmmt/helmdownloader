@@ -116,9 +116,13 @@ type model struct {
 	// cancelArmed tracks the double-esc gate on the download screen: the
 	// first esc arms cancellation, the second actually cancels.
 	cancelArmed bool
-	entries     []bundle.ImageEntry
-	failures    []pipeline.ImageFailure
-	bundlePath  string
+	// cancelling is set after the second esc on the download screen: the
+	// context is cancelled and the UI waits for the download goroutine's
+	// final message so completed images are kept.
+	cancelling bool
+	entries    []bundle.ImageEntry
+	failures   []pipeline.ImageFailure
+	bundlePath string
 	// sessionBundles accumulates every bundle path created this session. The user
 	// can chain charts ("add another chart" on the done screen); each chart still
 	// produces its own bundle, and the done screen lists them all.
