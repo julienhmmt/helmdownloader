@@ -370,6 +370,7 @@ func (p *Pipeline) saveWithRetry(ctx context.Context, srcRef, destRef, tarPath s
 // that ships no container images); the chart itself is always embedded.
 func (p *Pipeline) Bundle(prepared Prepared, pkg artifacthub.Package, version string, entries []bundle.ImageEntry) (string, error) {
 	p.logger.Infof("creating bundle for %s %s with %d images", pkg.Name, version, len(entries))
+	missing := missingImageRefs(prepared.Images, entries)
 	bundlePath, err := bundle.Create(bundle.Spec{
 		ChartName:      pkg.Name,
 		ChartVersion:   version,
@@ -380,7 +381,7 @@ func (p *Pipeline) Bundle(prepared Prepared, pkg artifacthub.Package, version st
 		Compression:    p.cfg.Compression,
 		Platform:       p.cfg.Platform,
 		RegistryPrefix: p.cfg.RegistryPrefix,
-		MissingImages:  missingImageRefs(prepared.Images, entries),
+		MissingImages:  missing,
 	})
 	if err != nil {
 		return "", err
@@ -391,9 +392,10 @@ func (p *Pipeline) Bundle(prepared Prepared, pkg artifacthub.Package, version st
 	// For temp work dirs, the entire dir is cleaned up by the caller.
 	// For persistent work dirs, we remove the images subdirectory (only when
 	// this bundle embedded images — a chart-only bundle must not wipe resume
-	// caches left by prior runs) and the pulled chart archive.
+	// caches left by prior runs) and the pulled chart archive. A partial bundle
+	// also keeps images/, so a -resume rerun only pulls what is still missing.
 	if prepared.WorkDir != "" && !prepared.TempWorkDir {
-		if len(entries) > 0 {
+		if len(entries) > 0 && len(missing) == 0 {
 			imagesDir := filepath.Join(prepared.WorkDir, "images")
 			if err := os.RemoveAll(imagesDir); err != nil {
 				p.logger.Debugf("failed to clean up images directory: %v", err)
