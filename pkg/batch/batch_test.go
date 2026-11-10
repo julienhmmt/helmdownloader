@@ -34,6 +34,7 @@ type fakeRunner struct {
 	failPrepare      map[string]error
 	imageFailures    map[string]int
 	bundledVersions  []string
+	onDownload       func()
 }
 
 func (f *fakeRunner) Prepare(_ context.Context, pkg artifacthub.Package, version string) (pipeline.Prepared, error) {
@@ -45,6 +46,9 @@ func (f *fakeRunner) Prepare(_ context.Context, pkg artifacthub.Package, version
 }
 
 func (f *fakeRunner) Download(_ context.Context, prepared pipeline.Prepared, refs []string, _ pipeline.ProgressFunc, _ pipeline.ByteProgressFunc) ([]bundle.ImageEntry, []pipeline.ImageFailure, error) {
+	if f.onDownload != nil {
+		f.onDownload()
+	}
 	var entries = make([]bundle.ImageEntry, 0, len(refs))
 	var failures []pipeline.ImageFailure
 	for index, ref := range refs {
@@ -129,6 +133,34 @@ func TestRun_ImageCompleteness(t *testing.T) {
 				t.Errorf("must bundle partial results and continue in order: %v", runner.bundledVersions)
 			}
 		})
+	}
+}
+
+// TestRun_StopsOnCancel: a cancel during a pull must fail the in-flight chart
+// without bundling a partial result, and skip the charts that follow.
+func TestRun_StopsOnCancel(t *testing.T) {
+	res := fakeResolver{pkgs: map[string]artifacthub.Package{
+		"nginx": {Name: "nginx", Version: "2.0"},
+		"redis": {Name: "redis", Version: "9.9"},
+	}}
+	refs := []ChartRef{{Repo: "r", Name: "nginx"}, {Repo: "r", Name: "redis"}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runner := &fakeRunner{onDownload: cancel}
+	var out bytes.Buffer
+	err := run(ctx, res, runner, refs, &out)
+
+	if err == nil {
+		t.Fatal("expected non-nil error after cancellation")
+	}
+	if len(runner.bundledVersions) != 0 {
+		t.Errorf("bundled after cancel: %v", runner.bundledVersions)
+	}
+	if len(runner.preparedVersions) != 1 {
+		t.Errorf("prepared versions = %v, want only the in-flight chart", runner.preparedVersions)
+	}
+	if !strings.Contains(out.String(), "FAILED") {
+		t.Errorf("output missing FAILED for interrupted chart:\n%s", out.String())
 	}
 }
 
