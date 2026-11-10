@@ -142,7 +142,7 @@ The status line reports the active `sort:`, `filter:`, and the count of charts s
 | `-output` | (from config) | Output directory for bundles (default: archives) |
 | `-work-dir` | (from config) | Work directory for intermediate files (charts, images). If empty, a temporary directory is used |
 | `-temp-dir` | (from config) | Parent directory for temporary work directories. If not writable, a fallback is chosen and a warning printed |
-| `-resume` | `false` | Reuse image tarballs already present in a persistent work dir instead of re-pulling (use with `-work-dir`). Reuse requires matching content-hash (`.sha256`) and registry digest (`.digest`) sidecars from a prior successful pull; truncated/corrupt tarballs and older work dirs without content hashes re-pull safely |
+| `-resume` | `false` | Reuse image tarballs already present in a persistent work dir instead of re-pulling (use with `-work-dir`). Reuse requires matching content-hash (`.sha256`) and registry digest (`.digest`) sidecars from a prior successful pull; truncated/corrupt tarballs and older work dirs without content hashes re-pull safely. After a PARTIAL bundle the downloaded tarballs are kept in the work dir so a rerun pulls only the missing images. |
 | `-registry-auth` | `false` | Enable authenticated pulls from private registries using the default Docker keychain |
 | `-compression` | `gzip` | Bundle compression codec: `gzip` (`.tar.gz`) or `zstd` (`.tar.zst`, smaller) |
 | `-min-free-mb` | `500` | Minimum free disk space (MiB) required on the work dir before downloading; `0` disables the check |

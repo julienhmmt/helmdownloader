@@ -134,3 +134,61 @@ func TestBundle_ChartOnlyPreservesImagesDir(t *testing.T) {
 	_, err = os.Stat(chartPath)
 	assert.True(t, os.IsNotExist(err), "chart archive is still cleaned up")
 }
+
+func TestBundle_PartialPreservesImagesDir(t *testing.T) {
+	// A partial bundle keeps images/ so a -resume rerun only pulls what is missing.
+	work := t.TempDir()
+	out := t.TempDir()
+	imagesDir := filepath.Join(work, "images")
+	require.NoError(t, os.MkdirAll(imagesDir, 0o755))
+	cached := filepath.Join(imagesDir, "cached.tar")
+	require.NoError(t, os.WriteFile(cached, []byte("resume-cache"), 0o644))
+	okTar := filepath.Join(imagesDir, "ok.tar")
+	require.NoError(t, os.WriteFile(okTar, []byte("ok"), 0o644))
+	chartPath := filepath.Join(work, "app-1.0.0.tgz")
+	require.NoError(t, os.WriteFile(chartPath, []byte("chart"), 0o644))
+	cfg := config.Default()
+	cfg.WorkDir = work
+	cfg.OutputDir = out
+	pl := New(cfg, log.Discard())
+	entries := []bundle.ImageEntry{{TarPath: okTar, SourceRef: "ok:1", DestRef: "r/ok:1", Digest: "sha256:x"}}
+	prepared := Prepared{
+		ChartPath:   chartPath,
+		WorkDir:     work,
+		TempWorkDir: false,
+		Images:      []images.Image{{Ref: "ok:1", Selected: true}, {Ref: "missing:1", Selected: true}},
+	}
+	_, err := pl.Bundle(prepared, artifacthub.Package{Name: "app"}, "1.0.0", entries)
+	require.NoError(t, err)
+	_, err = os.Stat(cached)
+	assert.NoError(t, err, "partial bundle must preserve cached tarballs for --resume")
+	_, err = os.Stat(okTar)
+	assert.NoError(t, err, "partial bundle must preserve downloaded tarballs for --resume")
+}
+
+func TestBundle_CompleteCleansImagesDir(t *testing.T) {
+	// A complete bundle still removes images/ after embedding its tarballs.
+	work := t.TempDir()
+	out := t.TempDir()
+	imagesDir := filepath.Join(work, "images")
+	require.NoError(t, os.MkdirAll(imagesDir, 0o755))
+	okTar := filepath.Join(imagesDir, "ok.tar")
+	require.NoError(t, os.WriteFile(okTar, []byte("ok"), 0o644))
+	chartPath := filepath.Join(work, "app-1.0.0.tgz")
+	require.NoError(t, os.WriteFile(chartPath, []byte("chart"), 0o644))
+	cfg := config.Default()
+	cfg.WorkDir = work
+	cfg.OutputDir = out
+	pl := New(cfg, log.Discard())
+	entries := []bundle.ImageEntry{{TarPath: okTar, SourceRef: "ok:1", DestRef: "r/ok:1", Digest: "sha256:x"}}
+	prepared := Prepared{
+		ChartPath:   chartPath,
+		WorkDir:     work,
+		TempWorkDir: false,
+		Images:      []images.Image{{Ref: "ok:1", Selected: true}},
+	}
+	_, err := pl.Bundle(prepared, artifacthub.Package{Name: "app"}, "1.0.0", entries)
+	require.NoError(t, err)
+	_, err = os.Stat(imagesDir)
+	assert.True(t, os.IsNotExist(err), "complete bundle must remove images/")
+}
