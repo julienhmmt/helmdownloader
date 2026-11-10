@@ -101,6 +101,21 @@ func TestImportImages_RejectsInvalidRef(t *testing.T) {
 	assert.Contains(t, err.Error(), "entry 1")
 }
 
+func TestImportImages_RejectsDuplicateRef(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "images.json")
+	entries := []imageListEntry{
+		{Ref: "redis:7", Selected: true},
+		{Ref: "redis:7", Selected: true},
+	}
+	data, err := json.MarshalIndent(entries, "", "  ")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+	_, err = importImages(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate image ref")
+}
+
 func TestReviewSave_PathAndCancel(t *testing.T) {
 	for _, configured := range []string{"", "approved.json"} {
 		t.Run("path="+configured, func(t *testing.T) {

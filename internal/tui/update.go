@@ -635,6 +635,10 @@ func (m model) handleAddImageKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.setWarning("Invalid image reference.")
 			return m, nil
 		}
+		if hasRef(m.reviewImages, ref) {
+			m.setWarning("Image already in the list.")
+			return m, nil
+		}
 		m.reviewImages = append(m.reviewImages, images.Image{Ref: ref, Selected: true})
 		m.reviewCursor = len(m.reviewImages) - 1
 		m.addInput.Blur()
@@ -771,6 +775,16 @@ func errorReturnState(errStep string, hasPkg bool) (state, bool) {
 		return stateSearch, true
 	}
 	return stateError, false
+}
+
+// hasRef reports whether ref is already present in imgs.
+func hasRef(imgs []images.Image, ref string) bool {
+	for _, img := range imgs {
+		if img.Ref == ref {
+			return true
+		}
+	}
+	return false
 }
 
 // selectedRefs returns the references of the images marked for inclusion.

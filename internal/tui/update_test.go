@@ -144,6 +144,19 @@ func TestDoneMsg_StaleIgnored(t *testing.T) {
 	}
 }
 
+func TestHandleAddImageKey_RejectsDuplicate(t *testing.T) {
+	m := newTestModel()
+	m.state = stateAddImage
+	m.reviewImages = []images.Image{{Ref: "redis:7", Selected: true}}
+	m.addInput.SetValue("redis:7")
+
+	got, _ := m.handleAddImageKey(keyPress("enter"))
+	gm := got.(model)
+	assert.Equal(t, stateAddImage, gm.state)
+	assert.Len(t, gm.reviewImages, 1)
+	assert.Contains(t, gm.status, "already")
+}
+
 func TestHandleResultsKey_SCycleSortField(t *testing.T) {
 	m := newResultsModel()
 	require.Equal(t, sortStars, m.sortField)
