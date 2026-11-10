@@ -18,8 +18,9 @@ For **every** new setting, do all four:
    empty string, `0`, or `-1` for "flag not passed" — match existing patterns).
 4. Document in `README.md` (flag table + example YAML).
 
-Optional: environment fallback only if already used for that domain
-(today: `HTTP_PROXY` / `HTTPS_PROXY` when proxy unset).
+Proxy environment variables are not read by helmdownloader itself: when the
+proxy is unset, the Go and helm defaults handle HTTPS_PROXY / HTTP_PROXY /
+NO_PROXY. Do not copy them into the config.
 
 **`-log-file` exception:** the flag default is `helmdownloader.log`, and merge
 is `if cfg.LogFile == "" { cfg.LogFile = *logFile }`. A non-empty config
@@ -64,7 +65,7 @@ Used for `-values` and `-set`. Do not invent a second pattern.
 | Theme | `-theme` | `auto` |
 | Concurrency | `-concurrency` | `4` |
 | Retries | `-retries` | `2` |
-| HTTPSProxy | `-proxy` | env fallback |
+| HTTPSProxy | `-proxy` | env (`HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY`) |
 | Compression | `-compression` | `gzip` (`zstd` ok) |
 | MinFreeDiskMB | `-min-free-mb` | `500` (`0` disables) |
 | Resume | `-resume` | false |

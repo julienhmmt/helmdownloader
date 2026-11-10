@@ -122,7 +122,6 @@ func main() {
 	if *proxy != "" {
 		cfg.HTTPSProxy = *proxy
 	}
-	cfg = applyProxyEnv(cfg)
 	if *verbose {
 		cfg.Verbose = true
 		cfg.LogLevel = "debug"
@@ -185,20 +184,6 @@ func loadConfig(fs *flag.FlagSet, path string) (config.Config, error) {
 	return config.Load(path)
 }
 
-// applyProxyEnv fills cfg.HTTPSProxy from HTTP_PROXY/HTTPS_PROXY when it was not
-// set via CLI or config, returning the updated copy.
-func applyProxyEnv(cfg config.Config) config.Config {
-	if cfg.HTTPSProxy != "" {
-		return cfg
-	}
-	if envProxy := os.Getenv("HTTP_PROXY"); envProxy != "" {
-		cfg.HTTPSProxy = envProxy
-	} else if envProxy := os.Getenv("HTTPS_PROXY"); envProxy != "" {
-		cfg.HTTPSProxy = envProxy
-	}
-	return cfg
-}
-
 // resolveWorkDir validates the configured work dir (creating it if needed), or,
 // when none is set, resolves a writable base for temporary work dirs — the same
 // preflight the interactive path uses, so batch behaves identically. Any
@@ -241,7 +226,6 @@ func runBatch(args []string) {
 		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
 		os.Exit(1)
 	}
-	cfg = applyProxyEnv(cfg)
 	if err := bundle.ValidateCompression(cfg.Compression); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
